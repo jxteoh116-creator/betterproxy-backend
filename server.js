@@ -2,7 +2,6 @@ const http = require("http");
 
 const PORT = process.env.PORT || 10000;
 
-// Sites currently allowed through the proxy
 const allowedHosts = [
   "example.com",
   "www.example.com",
@@ -11,11 +10,6 @@ const allowedHosts = [
   "iana.org",
   "www.iana.org"
 ];
-
-
-// ------------------------------------
-// Base64 URL encoding / decoding
-// ------------------------------------
 
 function decodeTarget(encoded) {
   try {
@@ -41,11 +35,6 @@ function encodeTarget(url) {
     .replace(/=+$/, "");
 }
 
-
-// ------------------------------------
-// Convert a target URL into a proxy URL
-// ------------------------------------
-
 function proxyUrl(url) {
   return (
     "https://betterproxy-backend.onrender.com/proxy/" +
@@ -55,18 +44,58 @@ function proxyUrl(url) {
 
 
 // ------------------------------------
-// Rewrite URLs inside HTML
+// Built-in JavaScript test page
+// ------------------------------------
+
+function testPage() {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>BetterProxy JavaScript Test</title>
+</head>
+
+<body>
+  <h1>BetterProxy JavaScript Test</h1>
+
+  <p id="message">
+    JavaScript has not run yet.
+  </p>
+
+  <button id="testButton">
+    Click me
+  </button>
+
+  <script>
+    document.getElementById("message").textContent =
+      "JavaScript loaded successfully! 🎉";
+
+    document.getElementById("testButton").addEventListener(
+      "click",
+      function () {
+        document.getElementById("message").textContent =
+          "The button JavaScript works! 🚀";
+      }
+    );
+  </script>
+</body>
+</html>`;
+}
+
+
+// ------------------------------------
+// Rewrite HTML
 // ------------------------------------
 
 function rewriteHtml(html, baseUrl) {
   return html
 
-    // <a href="...">
     .replace(
       /(<a\b[^>]*?\bhref\s*=\s*["'])([^"']+)(["'])/gi,
       (match, start, url, end) => {
         try {
-          const absolute = new URL(url, baseUrl).href;
+          const absolute =
+            new URL(url, baseUrl).href;
 
           if (
             !absolute.startsWith("http://") &&
@@ -75,49 +104,65 @@ function rewriteHtml(html, baseUrl) {
             return match;
           }
 
-          return start + proxyUrl(absolute) + end;
+          return (
+            start +
+            proxyUrl(absolute) +
+            end
+          );
         } catch {
           return match;
         }
       }
     )
 
-    // <img src="...">
     .replace(
       /(<img\b[^>]*?\bsrc\s*=\s*["'])([^"']+)(["'])/gi,
       (match, start, url, end) => {
         try {
-          const absolute = new URL(url, baseUrl).href;
+          const absolute =
+            new URL(url, baseUrl).href;
 
-          return start + proxyUrl(absolute) + end;
+          return (
+            start +
+            proxyUrl(absolute) +
+            end
+          );
         } catch {
           return match;
         }
       }
     )
 
-    // <link href="...">
     .replace(
       /(<link\b[^>]*?\bhref\s*=\s*["'])([^"']+)(["'])/gi,
       (match, start, url, end) => {
         try {
-          const absolute = new URL(url, baseUrl).href;
+          const absolute =
+            new URL(url, baseUrl).href;
 
-          return start + proxyUrl(absolute) + end;
+          return (
+            start +
+            proxyUrl(absolute) +
+            end
+          );
         } catch {
           return match;
         }
       }
     )
 
-    // <script src="...">
     .replace(
       /(<script\b[^>]*?\bsrc\s*=\s*["'])([^"']+)(["'])/gi,
       (match, start, url, end) => {
         try {
-          const absolute = new URL(url, baseUrl).href;
+          const absolute =
+            new URL(url, baseUrl).href;
 
-          return start + proxyUrl(absolute) + end;
+          return (
+            start +
+            proxyUrl(absolute) +
+            end
+          );
         } catch {
           return match;
         }
@@ -127,7 +172,7 @@ function rewriteHtml(html, baseUrl) {
 
 
 // ------------------------------------
-// Rewrite URLs inside CSS
+// Rewrite CSS
 // ------------------------------------
 
 function rewriteCss(css, baseUrl) {
@@ -136,8 +181,6 @@ function rewriteCss(css, baseUrl) {
     (match, quote, url) => {
       const trimmed = url.trim();
 
-      // Don't rewrite embedded data
-      // or blob URLs.
       if (
         trimmed.startsWith("data:") ||
         trimmed.startsWith("blob:")
@@ -146,9 +189,12 @@ function rewriteCss(css, baseUrl) {
       }
 
       try {
-        const absolute = new URL(trimmed, baseUrl).href;
+        const absolute =
+          new URL(trimmed, baseUrl).href;
 
-        return `url("${proxyUrl(absolute)}")`;
+        return (
+          `url("${proxyUrl(absolute)}")`
+        );
       } catch {
         return match;
       }
@@ -158,306 +204,365 @@ function rewriteCss(css, baseUrl) {
 
 
 // ------------------------------------
-// Create server
+// Server
 // ------------------------------------
 
-const server = http.createServer(async (req, res) => {
-  console.log("Request:", req.url);
-
-  // Allow browser requests
-  res.setHeader(
-    "Access-Control-Allow-Origin",
-    "*"
-  );
-
-
-  // ------------------------------------
-  // Test endpoint
-  // ------------------------------------
-
-  if (req.url === "/proxy/test") {
-    res.writeHead(200, {
-      "Content-Type":
-        "text/plain; charset=utf-8"
-    });
-
-    res.end("Backend works! 🎉");
-    return;
-  }
-
-
-  // ------------------------------------
-  // Backend homepage
-  // ------------------------------------
-
-  if (req.url === "/") {
-    res.writeHead(200, {
-      "Content-Type":
-        "text/plain; charset=utf-8"
-    });
-
-    res.end(
-      "BetterProxy backend is running!"
-    );
-
-    return;
-  }
-
-
-  // ------------------------------------
-  // Only /proxy/... is allowed
-  // ------------------------------------
-
-  if (!req.url.startsWith("/proxy/")) {
-    res.writeHead(404, {
-      "Content-Type":
-        "text/plain; charset=utf-8"
-    });
-
-    res.end("Not found");
-    return;
-  }
-
-
-  // ------------------------------------
-  // Decode target URL
-  // ------------------------------------
-
-  const encoded =
-    req.url.slice("/proxy/".length);
-
-  const target =
-    decodeTarget(encoded);
-
-  if (!target) {
-    res.writeHead(400, {
-      "Content-Type":
-        "text/plain; charset=utf-8"
-    });
-
-    res.end("Invalid encoded URL");
-    return;
-  }
-
-  console.log(
-    "Decoded target:",
-    target
-  );
-
-
-  // ------------------------------------
-  // Validate target URL
-  // ------------------------------------
-
-  let targetURL;
-
-  try {
-    targetURL = new URL(target);
-  } catch {
-    res.writeHead(400, {
-      "Content-Type":
-        "text/plain; charset=utf-8"
-    });
-
-    res.end("Invalid target URL");
-    return;
-  }
-
-
-  // ------------------------------------
-  // Check allowed hostname
-  // ------------------------------------
-
-  if (
-    !allowedHosts.includes(
-      targetURL.hostname
-    )
-  ) {
-    res.writeHead(403, {
-      "Content-Type":
-        "text/plain; charset=utf-8"
-    });
-
-    res.end(
-      "This site is not enabled yet."
-    );
-
-    return;
-  }
-
-
-  // ------------------------------------
-  // Fetch target
-  // ------------------------------------
-
-  try {
-    const response = await fetch(
-      targetURL.href,
-      {
-        // Don't automatically follow redirects.
-        redirect: "manual",
-
-        headers: {
-          "User-Agent":
-            "BetterProxy-Test/1.0"
-        }
-      }
-    );
-
-    const contentType =
-      response.headers.get(
-        "content-type"
-      ) ||
-      "application/octet-stream";
+const server = http.createServer(
+  async (req, res) => {
 
     console.log(
-      "Response:",
-      response.status,
-      contentType
+      "Request:",
+      req.url
+    );
+
+    res.setHeader(
+      "Access-Control-Allow-Origin",
+      "*"
     );
 
 
-    // ------------------------------------
-    // Handle redirects
-    // ------------------------------------
+    // --------------------------------
+    // JavaScript test page
+    // --------------------------------
+
+    if (req.url === "/test") {
+      res.writeHead(200, {
+        "Content-Type":
+          "text/html; charset=utf-8"
+      });
+
+      res.end(testPage());
+      return;
+    }
+
+
+    // --------------------------------
+    // Backend test
+    // --------------------------------
+
+    if (req.url === "/proxy/test") {
+      res.writeHead(200, {
+        "Content-Type":
+          "text/plain; charset=utf-8"
+      });
+
+      res.end(
+        "Backend works! 🎉"
+      );
+
+      return;
+    }
+
+
+    // --------------------------------
+    // Backend homepage
+    // --------------------------------
+
+    if (req.url === "/") {
+      res.writeHead(200, {
+        "Content-Type":
+          "text/plain; charset=utf-8"
+      });
+
+      res.end(
+        "BetterProxy backend is running!"
+      );
+
+      return;
+    }
+
+
+    // --------------------------------
+    // Proxy route
+    // --------------------------------
 
     if (
-      response.status === 301 ||
-      response.status === 302 ||
-      response.status === 303 ||
-      response.status === 307 ||
-      response.status === 308
+      !req.url.startsWith("/proxy/")
     ) {
-      const location =
+      res.writeHead(404, {
+        "Content-Type":
+          "text/plain; charset=utf-8"
+      });
+
+      res.end("Not found");
+      return;
+    }
+
+
+    // --------------------------------
+    // Decode target
+    // --------------------------------
+
+    const encoded =
+      req.url.slice("/proxy/".length);
+
+    const target =
+      decodeTarget(encoded);
+
+    if (!target) {
+      res.writeHead(400, {
+        "Content-Type":
+          "text/plain; charset=utf-8"
+      });
+
+      res.end(
+        "Invalid encoded URL"
+      );
+
+      return;
+    }
+
+    console.log(
+      "Decoded target:",
+      target
+    );
+
+
+    // --------------------------------
+    // Validate URL
+    // --------------------------------
+
+    let targetURL;
+
+    try {
+      targetURL =
+        new URL(target);
+    } catch {
+      res.writeHead(400, {
+        "Content-Type":
+          "text/plain; charset=utf-8"
+      });
+
+      res.end(
+        "Invalid target URL"
+      );
+
+      return;
+    }
+
+
+    // --------------------------------
+    // Allowed hosts
+    // --------------------------------
+
+    if (
+      !allowedHosts.includes(
+        targetURL.hostname
+      )
+    ) {
+      res.writeHead(403, {
+        "Content-Type":
+          "text/plain; charset=utf-8"
+      });
+
+      res.end(
+        "This site is not enabled yet."
+      );
+
+      return;
+    }
+
+
+    try {
+
+      const response =
+        await fetch(
+          targetURL.href,
+          {
+            redirect: "manual",
+
+            headers: {
+              "User-Agent":
+                "BetterProxy-Test/1.0"
+            }
+          }
+        );
+
+
+      const contentType =
         response.headers.get(
-          "location"
-        );
+          "content-type"
+        ) ||
+        "application/octet-stream";
 
-      if (!location) {
-        res.writeHead(
-          response.status
-        );
 
-        res.end();
-        return;
-      }
+      console.log(
+        "Response:",
+        response.status,
+        contentType
+      );
 
-      try {
-        // Convert relative redirects
-        // into absolute URLs.
-        const redirectTarget =
-          new URL(
-            location,
-            targetURL.href
-          ).href;
 
-        const redirectURL =
-          new URL(redirectTarget);
+      // --------------------------------
+      // Redirects
+      // --------------------------------
 
-        // Make sure the redirect
-        // stays on an allowed site.
-        if (
-          !allowedHosts.includes(
-            redirectURL.hostname
-          )
-        ) {
-          res.writeHead(403, {
+      if (
+        response.status === 301 ||
+        response.status === 302 ||
+        response.status === 303 ||
+        response.status === 307 ||
+        response.status === 308
+      ) {
+
+        const location =
+          response.headers.get(
+            "location"
+          );
+
+        if (!location) {
+          res.writeHead(
+            response.status
+          );
+
+          res.end();
+          return;
+        }
+
+
+        try {
+
+          const redirectTarget =
+            new URL(
+              location,
+              targetURL.href
+            ).href;
+
+          const redirectURL =
+            new URL(
+              redirectTarget
+            );
+
+
+          if (
+            !allowedHosts.includes(
+              redirectURL.hostname
+            )
+          ) {
+
+            res.writeHead(403, {
+              "Content-Type":
+                "text/plain; charset=utf-8"
+            });
+
+            res.end(
+              "Redirect target is not enabled."
+            );
+
+            return;
+          }
+
+
+          res.writeHead(
+            response.status,
+            {
+              Location:
+                proxyUrl(
+                  redirectTarget
+                )
+            }
+          );
+
+          res.end();
+
+          console.log(
+            "Proxy redirect:",
+            redirectTarget
+          );
+
+          return;
+
+        } catch {
+
+          res.writeHead(502, {
             "Content-Type":
               "text/plain; charset=utf-8"
           });
 
           res.end(
-            "Redirect target is not enabled."
+            "Invalid redirect"
           );
 
           return;
         }
+      }
 
-        // Send browser to the proxy
-        // instead of the real destination.
+
+      // --------------------------------
+      // HTML
+      // --------------------------------
+
+      if (
+        contentType.includes(
+          "text/html"
+        )
+      ) {
+
+        let body =
+          await response.text();
+
+        body =
+          rewriteHtml(
+            body,
+            targetURL.href
+          );
+
         res.writeHead(
           response.status,
           {
-            Location:
-              proxyUrl(
-                redirectTarget
-              )
+            "Content-Type":
+              contentType
           }
         );
 
-        res.end();
-
-        console.log(
-          "Proxy redirect:",
-          redirectTarget
-        );
-
-        return;
-
-      } catch {
-        res.writeHead(502, {
-          "Content-Type":
-            "text/plain; charset=utf-8"
-        });
-
-        res.end(
-          "Invalid redirect"
-        );
-
+        res.end(body);
         return;
       }
-    }
 
 
-    // ------------------------------------
-    // HTML response
-    // ------------------------------------
+      // --------------------------------
+      // CSS
+      // --------------------------------
 
-    if (
-      contentType.includes(
-        "text/html"
-      )
-    ) {
-      let body =
-        await response.text();
+      if (
+        contentType.includes(
+          "text/css"
+        ) ||
+        targetURL.pathname.endsWith(
+          ".css"
+        )
+      ) {
 
-      body = rewriteHtml(
-        body,
-        targetURL.href
-      );
+        let body =
+          await response.text();
 
-      res.writeHead(
-        response.status,
-        {
-          "Content-Type":
-            contentType
-        }
-      );
+        body =
+          rewriteCss(
+            body,
+            targetURL.href
+          );
 
-      res.end(body);
-      return;
-    }
+        res.writeHead(
+          response.status,
+          {
+            "Content-Type":
+              contentType
+          }
+        );
+
+        res.end(body);
+        return;
+      }
 
 
-    // ------------------------------------
-    // CSS response
-    // ------------------------------------
+      // --------------------------------
+      // Binary resources
+      // --------------------------------
 
-    if (
-      contentType.includes(
-        "text/css"
-      ) ||
-      targetURL.pathname.endsWith(
-        ".css"
-      )
-    ) {
-      let body =
-        await response.text();
-
-      body = rewriteCss(
-        body,
-        targetURL.href
-      );
+      const buffer =
+        Buffer.from(
+          await response.arrayBuffer()
+        );
 
       res.writeHead(
         response.status,
@@ -467,51 +572,30 @@ const server = http.createServer(async (req, res) => {
         }
       );
 
-      res.end(body);
-      return;
-    }
+      res.end(buffer);
 
+    } catch (error) {
 
-    // ------------------------------------
-    // Images, fonts, etc.
-    // Keep binary data intact.
-    // ------------------------------------
-
-    const buffer =
-      Buffer.from(
-        await response.arrayBuffer()
+      console.error(
+        "Fetch error:",
+        error
       );
 
-    res.writeHead(
-      response.status,
-      {
+      res.writeHead(502, {
         "Content-Type":
-          contentType
-      }
-    );
+          "text/plain; charset=utf-8"
+      });
 
-    res.end(buffer);
-
-  } catch (error) {
-    console.error(
-      "Fetch error:",
-      error
-    );
-
-    res.writeHead(502, {
-      "Content-Type":
-        "text/plain; charset=utf-8"
-    });
-
-    res.end(
-      "Backend fetch failed"
-    );
+      res.end(
+        "Backend fetch failed"
+      );
+    }
   }
-});
+);
 
 
 // ------------------------------------
-// Start server
+// Start
 // ------------------------------------
 
 server.listen(
