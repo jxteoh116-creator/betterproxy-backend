@@ -39,7 +39,7 @@ function proxyUrl(url) {
 
 
 // ------------------------------------
-// Rewrite URLs inside HTML
+// Rewrite HTML
 // ------------------------------------
 
 function rewriteHtml(html, baseUrl) {
@@ -69,7 +69,6 @@ function rewriteHtml(html, baseUrl) {
       (match, start, url, end) => {
         try {
           const absolute = new URL(url, baseUrl).href;
-
           return start + proxyUrl(absolute) + end;
         } catch {
           return match;
@@ -82,7 +81,6 @@ function rewriteHtml(html, baseUrl) {
       (match, start, url, end) => {
         try {
           const absolute = new URL(url, baseUrl).href;
-
           return start + proxyUrl(absolute) + end;
         } catch {
           return match;
@@ -95,7 +93,6 @@ function rewriteHtml(html, baseUrl) {
       (match, start, url, end) => {
         try {
           const absolute = new URL(url, baseUrl).href;
-
           return start + proxyUrl(absolute) + end;
         } catch {
           return match;
@@ -106,7 +103,7 @@ function rewriteHtml(html, baseUrl) {
 
 
 // ------------------------------------
-// Rewrite URLs inside CSS
+// Rewrite CSS
 // ------------------------------------
 
 function rewriteCss(css, baseUrl) {
@@ -115,7 +112,6 @@ function rewriteCss(css, baseUrl) {
     (match, quote, url) => {
       const trimmed = url.trim();
 
-      // Don't rewrite data: URLs
       if (
         trimmed.startsWith("data:") ||
         trimmed.startsWith("blob:")
@@ -142,14 +138,10 @@ function rewriteCss(css, baseUrl) {
 const server = http.createServer(async (req, res) => {
   console.log("Request:", req.url);
 
-  // Allow frontend requests
   res.setHeader("Access-Control-Allow-Origin", "*");
 
 
-  // ------------------------------------
-  // Test endpoint
-  // ------------------------------------
-
+  // Test
   if (req.url === "/proxy/test") {
     res.writeHead(200, {
       "Content-Type": "text/plain; charset=utf-8"
@@ -160,10 +152,7 @@ const server = http.createServer(async (req, res) => {
   }
 
 
-  // ------------------------------------
   // Homepage
-  // ------------------------------------
-
   if (req.url === "/") {
     res.writeHead(200, {
       "Content-Type": "text/plain; charset=utf-8"
@@ -174,10 +163,7 @@ const server = http.createServer(async (req, res) => {
   }
 
 
-  // ------------------------------------
-  // Require /proxy/ route
-  // ------------------------------------
-
+  // Proxy route
   if (!req.url.startsWith("/proxy/")) {
     res.writeHead(404, {
       "Content-Type": "text/plain; charset=utf-8"
@@ -188,12 +174,8 @@ const server = http.createServer(async (req, res) => {
   }
 
 
-  // ------------------------------------
-  // Decode target URL
-  // ------------------------------------
-
+  // Decode target
   const encoded = req.url.slice("/proxy/".length);
-
   const target = decodeTarget(encoded);
 
   if (!target) {
@@ -208,10 +190,7 @@ const server = http.createServer(async (req, res) => {
   console.log("Decoded target:", target);
 
 
-  // ------------------------------------
-  // Validate target URL
-  // ------------------------------------
-
+  // Validate URL
   let targetURL;
 
   try {
@@ -226,10 +205,7 @@ const server = http.createServer(async (req, res) => {
   }
 
 
-  // ------------------------------------
-  // Allowed sites
-  // ------------------------------------
-
+  // Allowed hosts
   if (!allowedHosts.includes(targetURL.hostname)) {
     res.writeHead(403, {
       "Content-Type": "text/plain; charset=utf-8"
@@ -240,31 +216,95 @@ const server = http.createServer(async (req, res) => {
   }
 
 
-  // ------------------------------------
-  // Fetch target
-  // ------------------------------------
-
   try {
+    // IMPORTANT:
+    // Don't automatically follow redirects.
     const response = await fetch(targetURL.href, {
+      redirect: "manual",
+
       headers: {
         "User-Agent": "BetterProxy-Test/1.0"
       }
     });
 
-    const contentType =
-      response.headers.get("content-type") ||
-      "application/octet-stream";
-
     console.log(
       "Response:",
       response.status,
-      contentType
+      response.headers.get("content-type") || ""
     );
+
+
+    // ------------------------------------
+    // Handle redirects
+    // ------------------------------------
+
+    if (
+      response.status === 301 ||
+      response.status === 302 ||
+      response.status === 303 ||
+      response.status === 307 ||
+      response.status === 308
+    ) {
+      const location = response.headers.get("location");
+
+      if (!location) {
+        res.writeHead(response.status);
+        res.end();
+        return;
+      }
+
+      try {
+        const redirectTarget =
+          new URL(location, targetURL.href).href;
+
+        const redirectHost =
+          new URL(redirectTarget).hostname;
+
+        if (!allowedHosts.includes(redirectHost)) {
+          res.writeHead(403, {
+            "Content-Type":
+              "text/plain; charset=utf-8"
+          });
+
+          res.end(
+            "Redirect target is not enabled."
+          );
+
+          return;
+        }
+
+        res.writeHead(response.status, {
+          "Location": proxyUrl(redirectTarget)
+        });
+
+        res.end();
+
+        console.log(
+          "Proxy redirect:",
+          redirectTarget
+        );
+
+        return;
+
+      } catch {
+        res.writeHead(502, {
+          "Content-Type":
+            "text/plain; charset=utf-8"
+        });
+
+        res.end("Invalid redirect");
+        return;
+      }
+    }
 
 
     // ------------------------------------
     // HTML
     // ------------------------------------
+
+    const contentType =
+      response.headers.get("content-type") ||
+      "application/octet-stream";
 
     if (contentType.includes("text/html")) {
       let body = await response.text();
@@ -308,8 +348,7 @@ const server = http.createServer(async (req, res) => {
 
 
     // ------------------------------------
-    // Images, fonts, etc.
-    // Keep them binary-safe.
+    // Binary resources
     // ------------------------------------
 
     const buffer = Buffer.from(
@@ -326,17 +365,14 @@ const server = http.createServer(async (req, res) => {
     console.error("Fetch error:", error);
 
     res.writeHead(502, {
-      "Content-Type": "text/plain; charset=utf-8"
+      "Content-Type":
+        "text/plain; charset=utf-8"
     });
 
     res.end("Backend fetch failed");
   }
 });
 
-
-// ------------------------------------
-// Start server
-// ------------------------------------
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(
