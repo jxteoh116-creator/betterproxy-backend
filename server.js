@@ -4,12 +4,10 @@ const PORT = process.env.PORT || 10000;
 
 function decodeTarget(encoded) {
   try {
-    // Convert URL-safe base64 back to normal base64
     let base64 = encoded
       .replace(/-/g, "+")
       .replace(/_/g, "/");
 
-    // Restore padding
     while (base64.length % 4) {
       base64 += "=";
     }
@@ -23,10 +21,12 @@ function decodeTarget(encoded) {
 const server = http.createServer(async (req, res) => {
   console.log("Request:", req.url);
 
-  // Allow the StackBlitz frontend to call this backend
+  // Allow requests from the frontend
   res.setHeader("Access-Control-Allow-Origin", "*");
 
-  // Test route
+  // -------------------------
+  // TEST ROUTE
+  // -------------------------
   if (req.url === "/proxy/test") {
     res.writeHead(200, {
       "Content-Type": "text/plain; charset=utf-8"
@@ -36,7 +36,9 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Proxy route
+  // -------------------------
+  // PROXY ROUTE
+  // -------------------------
   if (req.url.startsWith("/proxy/")) {
     const encoded = req.url.slice("/proxy/".length);
 
@@ -66,17 +68,28 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Keep the public test proxy restricted for now.
-    // We can expand this later after the basic setup works.
-    if (targetURL.hostname !== "example.com") {
+    // -------------------------
+    // ALLOWED TEST SITES
+    // -------------------------
+    const allowedHosts = [
+      "example.com",
+      "www.example.com",
+      "example.org",
+      "www.example.org"
+    ];
+
+    if (!allowedHosts.includes(targetURL.hostname)) {
       res.writeHead(403, {
         "Content-Type": "text/plain; charset=utf-8"
       });
 
-      res.end("For now, only example.com is allowed.");
+      res.end("This site is not enabled yet.");
       return;
     }
 
+    // -------------------------
+    // FETCH TARGET
+    // -------------------------
     try {
       const response = await fetch(targetURL.href, {
         headers: {
@@ -93,6 +106,7 @@ const server = http.createServer(async (req, res) => {
       });
 
       res.end(body);
+
     } catch (error) {
       console.error("Fetch error:", error);
 
@@ -106,7 +120,9 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Home/test page
+  // -------------------------
+  // HOME
+  // -------------------------
   if (req.url === "/") {
     res.writeHead(200, {
       "Content-Type": "text/plain; charset=utf-8"
@@ -116,6 +132,9 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // -------------------------
+  // NOT FOUND
+  // -------------------------
   res.writeHead(404, {
     "Content-Type": "text/plain; charset=utf-8"
   });
