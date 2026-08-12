@@ -59,7 +59,7 @@ function proxyUrl(url) {
 
 
 // ====================================
-// TEST PAGE
+// JAVASCRIPT FETCH TEST PAGE
 // ====================================
 
 function testPage() {
@@ -68,7 +68,10 @@ function testPage() {
 
 <head>
   <meta charset="UTF-8">
-  <title>BetterProxy Fetch Test</title>
+
+  <title>
+    BetterProxy Fetch Test
+  </title>
 
   <style>
     body {
@@ -89,7 +92,9 @@ function testPage() {
 
 <body>
 
-  <h1>BetterProxy Fetch Test</h1>
+  <h1>
+    BetterProxy Fetch Test
+  </h1>
 
   <p id="message">
     JavaScript has not run yet.
@@ -102,112 +107,91 @@ function testPage() {
 
   <script>
 
-    // ==================================
-    // Save original browser fetch
-    // ==================================
-
-    const originalFetch =
-      window.fetch;
+    // Save the original browser fetch.
+    const originalFetch = window.fetch;
 
 
-    // ==================================
-    // BetterProxy backend
-    // ==================================
-
+    // BetterProxy backend.
     const BACKEND =
       "https://betterproxy-backend.onrender.com";
 
 
-    // ==================================
-    // Encode URL
-    // ==================================
-
+    // Encode a target URL.
     function encodeTarget(url) {
 
       return btoa(url)
-        .replace(/\\\\+/g, "-")
-        .replace(/\\\\//g, "_")
+        .replace(/\\+/g, "-")
+        .replace(/\\//g, "_")
         .replace(/=+$/, "");
 
     }
 
 
-    // ==================================
-    // Intercept fetch()
-    // ==================================
+    // Intercept fetch().
+    window.fetch = function(input, init) {
 
-    window.fetch =
-      function(input, init) {
-
-        let url;
+      let url;
 
 
-        if (
-          typeof input === "string"
-        ) {
+      if (typeof input === "string") {
 
-          url = input;
+        url = input;
 
-        } else {
+      } else if (input && input.url) {
 
-          url = input.url;
+        url = input.url;
 
-        }
-
-
-        // Only intercept absolute
-        // HTTP/HTTPS URLs.
-
-        if (
-          url.startsWith("http://") ||
-          url.startsWith("https://")
-        ) {
-
-          const proxied =
-            BACKEND +
-            "/proxy/" +
-            encodeTarget(url);
-
-
-          console.log(
-            "BetterProxy intercepted fetch:",
-            url
-          );
-
-
-          return originalFetch(
-            proxied,
-            init
-          );
-
-        }
-
-
-        // Keep relative requests
-        // working normally.
+      } else {
 
         return originalFetch(
           input,
           init
         );
 
-      };
+      }
 
 
-    // ==================================
-    // Initial status
-    // ==================================
+      // Only proxy absolute HTTP/HTTPS URLs.
+      if (
+        url.startsWith("http://") ||
+        url.startsWith("https://")
+      ) {
 
+        const proxied =
+          BACKEND +
+          "/proxy/" +
+          encodeTarget(url);
+
+
+        console.log(
+          "BetterProxy intercepted fetch:",
+          url
+        );
+
+
+        return originalFetch(
+          proxied,
+          init
+        );
+      }
+
+
+      // Leave relative URLs alone.
+      return originalFetch(
+        input,
+        init
+      );
+    };
+
+
+    // Show that the interceptor installed.
     document.getElementById(
       "message"
     ).textContent =
       "Fetch interceptor installed!";
 
 
-    // ==================================
-    // Test button
-    // ==================================
-
+    // Test button.
     document.getElementById(
       "testButton"
     ).addEventListener(
@@ -256,6 +240,7 @@ function testPage() {
         } catch (error) {
 
           console.error(
+            "Fetch error:",
             error
           );
 
@@ -544,6 +529,34 @@ const server =
 
 
       // -------------------------------
+      // OPTIONS / CORS preflight
+      // -------------------------------
+
+      if (
+        req.method === "OPTIONS"
+      ) {
+
+        res.writeHead(
+          204,
+          {
+            "Access-Control-Allow-Origin":
+              "*",
+
+            "Access-Control-Allow-Methods":
+              "GET,HEAD,OPTIONS",
+
+            "Access-Control-Allow-Headers":
+              "*"
+          }
+        );
+
+        res.end();
+
+        return;
+      }
+
+
+      // -------------------------------
       // Homepage
       // -------------------------------
 
@@ -566,7 +579,6 @@ const server =
 
 
         return;
-
       }
 
 
@@ -593,12 +605,11 @@ const server =
 
 
         return;
-
       }
 
 
       // -------------------------------
-      // JavaScript test
+      // JavaScript test page
       // -------------------------------
 
       if (
@@ -620,7 +631,6 @@ const server =
 
 
         return;
-
       }
 
 
@@ -649,7 +659,6 @@ const server =
 
 
         return;
-
       }
 
 
@@ -686,7 +695,6 @@ const server =
 
 
         return;
-
       }
 
 
@@ -697,7 +705,7 @@ const server =
 
 
       // -------------------------------
-      // Parse target URL
+      // Parse URL
       // -------------------------------
 
       let targetURL;
@@ -706,7 +714,9 @@ const server =
       try {
 
         targetURL =
-          new URL(target);
+          new URL(
+            target
+          );
 
       } catch {
 
@@ -725,12 +735,11 @@ const server =
 
 
         return;
-
       }
 
 
       // -------------------------------
-      // Allowed host check
+      // Allowed host
       // -------------------------------
 
       if (
@@ -754,7 +763,6 @@ const server =
 
 
         return;
-
       }
 
 
@@ -820,7 +828,6 @@ const server =
             res.end();
 
             return;
-
           }
 
 
@@ -860,7 +867,6 @@ const server =
 
 
               return;
-
             }
 
 
@@ -903,9 +909,7 @@ const server =
 
 
             return;
-
           }
-
         }
 
 
@@ -945,7 +949,6 @@ const server =
 
 
           return;
-
         }
 
 
@@ -988,12 +991,11 @@ const server =
 
 
           return;
-
         }
 
 
         // -----------------------------
-        // Binary resources
+        // Binary / other resources
         // -----------------------------
 
         const buffer =
@@ -1036,9 +1038,7 @@ const server =
         res.end(
           "Backend fetch failed"
         );
-
       }
-
     }
   );
 
