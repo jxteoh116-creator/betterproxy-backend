@@ -47,7 +47,70 @@ function proxyUrl(url) {
 // Built-in JavaScript test page
 // ------------------------------------
 
-function testPage() {
+function testPage(function testPage() {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>BetterProxy Fetch Test</title>
+</head>
+
+<body>
+  <h1>BetterProxy Fetch Test</h1>
+
+  <p id="message">
+    JavaScript has not run yet.
+  </p>
+
+  <button id="testButton">
+    Test API Request
+  </button>
+
+  <script>
+    document.getElementById("message").textContent =
+      "JavaScript loaded successfully!";
+
+    document.getElementById("testButton").addEventListener(
+      "click",
+      async function () {
+
+        const message =
+          document.getElementById("message");
+
+        message.textContent =
+          "Sending fetch request...";
+
+        try {
+
+          const response =
+            await fetch("/proxy/test");
+
+          if (!response.ok) {
+            throw new Error(
+              "HTTP " + response.status
+            );
+          }
+
+          const text =
+            await response.text();
+
+          message.textContent =
+            "Fetch worked: " + text;
+
+        } catch (error) {
+
+          console.error(error);
+
+          message.textContent =
+            "Fetch failed: " +
+            error.message;
+        }
+      }
+    );
+  </script>
+</body>
+</html>`;
+}) {
   return `<!DOCTYPE html>
 <html>
 <head>
