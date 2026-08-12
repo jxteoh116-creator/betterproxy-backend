@@ -45,8 +45,10 @@ function rewriteHtml(html, baseUrl) {
         try {
           const absolute = new URL(url, baseUrl).href;
 
-          if (!absolute.startsWith("http://") &&
-              !absolute.startsWith("https://")) {
+          if (
+            !absolute.startsWith("http://") &&
+            !absolute.startsWith("https://")
+          ) {
             return match;
           }
 
@@ -85,6 +87,7 @@ const server = http.createServer(async (req, res) => {
 
   res.setHeader("Access-Control-Allow-Origin", "*");
 
+  // Test endpoint
   if (req.url === "/proxy/test") {
     res.writeHead(200, {
       "Content-Type": "text/plain; charset=utf-8"
@@ -94,26 +97,35 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Homepage
+  if (req.url === "/") {
+    res.writeHead(200, {
+      "Content-Type": "text/plain; charset=utf-8"
+    });
+
+    res.end("BetterProxy backend is running!");
+    return;
+  }
+
+  // Anything other than /proxy/... is not found
   if (!req.url.startsWith("/proxy/")) {
-    if (req.url === "/") {
-      res.writeHead(200, {
-        "Content-Type": "text/plain; charset=utf-8"
-      });
+    res.writeHead(404, {
+      "Content-Type": "text/plain; charset=utf-8"
+    });
 
-      res.end("BetterProxy backend is running!");
-      return;
-    }
-
-    res.writeHead(404);
     res.end("Not found");
     return;
   }
 
+  // Decode target URL
   const encoded = req.url.slice("/proxy/".length);
   const target = decodeTarget(encoded);
 
   if (!target) {
-    res.writeHead(400);
+    res.writeHead(400, {
+      "Content-Type": "text/plain; charset=utf-8"
+    });
+
     res.end("Invalid encoded URL");
     return;
   }
@@ -125,13 +137,20 @@ const server = http.createServer(async (req, res) => {
   try {
     targetURL = new URL(target);
   } catch {
-    res.writeHead(400);
+    res.writeHead(400, {
+      "Content-Type": "text/plain; charset=utf-8"
+    });
+
     res.end("Invalid target URL");
     return;
   }
 
+  // Only allow our test domains for now
   if (!allowedHosts.includes(targetURL.hostname)) {
-    res.writeHead(403);
+    res.writeHead(403, {
+      "Content-Type": "text/plain; charset=utf-8"
+    });
+
     res.end("This site is not enabled yet.");
     return;
   }
@@ -143,22 +162,40 @@ const server = http.createServer(async (req, res) => {
       }
     });
 
-    let body = await response.text();
-
     const contentType =
-      response.headers.get("content-type") || "";
+      response.headers.get("content-type") ||
+      "application/octet-stream";
 
+    console.log(
+      "Response:",
+      response.status,
+      contentType
+    );
+
+    // HTML needs to be treated as text so we can rewrite it
     if (contentType.includes("text/html")) {
+      let body = await response.text();
+
       body = rewriteHtml(body, targetURL.href);
+
+      res.writeHead(response.status, {
+        "Content-Type": contentType
+      });
+
+      res.end(body);
+      return;
     }
 
+    // Everything else stays binary-safe
+    const buffer = Buffer.from(
+      await response.arrayBuffer()
+    );
+
     res.writeHead(response.status, {
-      "Content-Type":
-        response.headers.get("content-type") ||
-        "text/html; charset=utf-8"
+      "Content-Type": contentType
     });
 
-    res.end(body);
+    res.end(buffer);
 
   } catch (error) {
     console.error("Fetch error:", error);
