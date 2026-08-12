@@ -37,6 +37,11 @@ function proxyUrl(url) {
   return "/proxy/" + encodeTarget(url);
 }
 
+
+// ------------------------------------
+// Rewrite URLs inside HTML
+// ------------------------------------
+
 function rewriteHtml(html, baseUrl) {
   return html
     .replace(
@@ -58,22 +63,39 @@ function rewriteHtml(html, baseUrl) {
         }
       }
     )
+
     .replace(
       /(<img\b[^>]*?\bsrc\s*=\s*["'])([^"']+)(["'])/gi,
       (match, start, url, end) => {
         try {
           const absolute = new URL(url, baseUrl).href;
+
           return start + proxyUrl(absolute) + end;
         } catch {
           return match;
         }
       }
     )
+
     .replace(
       /(<link\b[^>]*?\bhref\s*=\s*["'])([^"']+)(["'])/gi,
       (match, start, url, end) => {
         try {
           const absolute = new URL(url, baseUrl).href;
+
+          return start + proxyUrl(absolute) + end;
+        } catch {
+          return match;
+        }
+      }
+    )
+
+    .replace(
+      /(<script\b[^>]*?\bsrc\s*=\s*["'])([^"']+)(["'])/gi,
+      (match, start, url, end) => {
+        try {
+          const absolute = new URL(url, baseUrl).href;
+
           return start + proxyUrl(absolute) + end;
         } catch {
           return match;
@@ -82,12 +104,52 @@ function rewriteHtml(html, baseUrl) {
     );
 }
 
+
+// ------------------------------------
+// Rewrite URLs inside CSS
+// ------------------------------------
+
+function rewriteCss(css, baseUrl) {
+  return css.replace(
+    /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi,
+    (match, quote, url) => {
+      const trimmed = url.trim();
+
+      // Don't rewrite data: URLs
+      if (
+        trimmed.startsWith("data:") ||
+        trimmed.startsWith("blob:")
+      ) {
+        return match;
+      }
+
+      try {
+        const absolute = new URL(trimmed, baseUrl).href;
+
+        return `url("${proxyUrl(absolute)}")`;
+      } catch {
+        return match;
+      }
+    }
+  );
+}
+
+
+// ------------------------------------
+// Server
+// ------------------------------------
+
 const server = http.createServer(async (req, res) => {
   console.log("Request:", req.url);
 
+  // Allow frontend requests
   res.setHeader("Access-Control-Allow-Origin", "*");
 
+
+  // ------------------------------------
   // Test endpoint
+  // ------------------------------------
+
   if (req.url === "/proxy/test") {
     res.writeHead(200, {
       "Content-Type": "text/plain; charset=utf-8"
@@ -97,7 +159,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+
+  // ------------------------------------
   // Homepage
+  // ------------------------------------
+
   if (req.url === "/") {
     res.writeHead(200, {
       "Content-Type": "text/plain; charset=utf-8"
@@ -107,7 +173,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Anything other than /proxy/... is not found
+
+  // ------------------------------------
+  // Require /proxy/ route
+  // ------------------------------------
+
   if (!req.url.startsWith("/proxy/")) {
     res.writeHead(404, {
       "Content-Type": "text/plain; charset=utf-8"
@@ -117,8 +187,13 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+
+  // ------------------------------------
   // Decode target URL
+  // ------------------------------------
+
   const encoded = req.url.slice("/proxy/".length);
+
   const target = decodeTarget(encoded);
 
   if (!target) {
@@ -131,6 +206,11 @@ const server = http.createServer(async (req, res) => {
   }
 
   console.log("Decoded target:", target);
+
+
+  // ------------------------------------
+  // Validate target URL
+  // ------------------------------------
 
   let targetURL;
 
@@ -145,7 +225,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Only allow our test domains for now
+
+  // ------------------------------------
+  // Allowed sites
+  // ------------------------------------
+
   if (!allowedHosts.includes(targetURL.hostname)) {
     res.writeHead(403, {
       "Content-Type": "text/plain; charset=utf-8"
@@ -154,6 +238,11 @@ const server = http.createServer(async (req, res) => {
     res.end("This site is not enabled yet.");
     return;
   }
+
+
+  // ------------------------------------
+  // Fetch target
+  // ------------------------------------
 
   try {
     const response = await fetch(targetURL.href, {
@@ -172,11 +261,18 @@ const server = http.createServer(async (req, res) => {
       contentType
     );
 
-    // HTML needs to be treated as text so we can rewrite it
+
+    // ------------------------------------
+    // HTML
+    // ------------------------------------
+
     if (contentType.includes("text/html")) {
       let body = await response.text();
 
-      body = rewriteHtml(body, targetURL.href);
+      body = rewriteHtml(
+        body,
+        targetURL.href
+      );
 
       res.writeHead(response.status, {
         "Content-Type": contentType
@@ -186,7 +282,36 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Everything else stays binary-safe
+
+    // ------------------------------------
+    // CSS
+    // ------------------------------------
+
+    if (
+      contentType.includes("text/css") ||
+      targetURL.pathname.endsWith(".css")
+    ) {
+      let body = await response.text();
+
+      body = rewriteCss(
+        body,
+        targetURL.href
+      );
+
+      res.writeHead(response.status, {
+        "Content-Type": contentType
+      });
+
+      res.end(body);
+      return;
+    }
+
+
+    // ------------------------------------
+    // Images, fonts, etc.
+    // Keep them binary-safe.
+    // ------------------------------------
+
     const buffer = Buffer.from(
       await response.arrayBuffer()
     );
@@ -208,6 +333,13 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+
+// ------------------------------------
+// Start server
+// ------------------------------------
+
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Backend listening on port ${PORT}`);
+  console.log(
+    `Backend listening on port ${PORT}`
+  );
 });
