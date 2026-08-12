@@ -34,7 +34,8 @@ function encodeTarget(url) {
 }
 
 function proxyUrl(url) {
-  return "/proxy/" + encodeTarget(url);
+  return "https://betterproxy-backend.onrender.com/proxy/" +
+    encodeTarget(url);
 }
 
 
