@@ -47,7 +47,7 @@ function proxyUrl(url) {
 // Built-in JavaScript test page
 // ------------------------------------
 
-function testPage(function testPage() {
+function testPage() {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -110,6 +110,7 @@ function testPage(function testPage() {
   </script>
 </body>
 </html>`;
+}
 }) {
   return `<!DOCTYPE html>
 <html>
