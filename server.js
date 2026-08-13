@@ -5,6 +5,11 @@ const PORT = process.env.PORT || 10000;
 const BACKEND_URL =
   "https://betterproxy-backend.onrender.com";
 
+
+// ====================================
+// ALLOWED HOSTS
+// ====================================
+
 const allowedHosts = [
   "example.com",
   "www.example.com",
@@ -59,37 +64,56 @@ function proxyUrl(url) {
 
 
 // ====================================
-// FETCH INTERCEPTOR
+// FETCH + XMLHttpRequest INTERCEPTOR
 // ====================================
 
-function fetchInterceptor() {
+function requestInterceptor() {
+
   return `
 <script>
 (function () {
+
+  // ==================================
+  // FETCH INTERCEPTION
+  // ==================================
 
   const originalFetch = window.fetch;
 
   const BACKEND =
     "${BACKEND_URL}";
 
+
   function encodeTarget(url) {
+
     return btoa(url)
-      .replace(/\\+/g, "-")
-      .replace(/\\//g, "_")
+      .replace(/\\\\+/g, "-")
+      .replace(/\\\\//g, "_")
       .replace(/=+$/, "");
+
   }
+
 
   window.fetch = function(input, init) {
 
     let url;
 
     if (typeof input === "string") {
+
       url = input;
+
     } else if (input && input.url) {
+
       url = input.url;
+
     } else {
-      return originalFetch(input, init);
+
+      return originalFetch(
+        input,
+        init
+      );
+
     }
+
 
     if (
       url.startsWith("http://") ||
@@ -101,26 +125,133 @@ function fetchInterceptor() {
         "/proxy/" +
         encodeTarget(url);
 
+
       console.log(
         "BetterProxy fetch:",
         url
       );
 
+
       return originalFetch(
         proxied,
         init
       );
+
     }
+
 
     return originalFetch(
       input,
       init
     );
+
   };
+
+
+  // ==================================
+  // XMLHttpRequest INTERCEPTION
+  // ==================================
+
+  const originalOpen =
+    XMLHttpRequest.prototype.open;
+
+
+  const originalSend =
+    XMLHttpRequest.prototype.send;
+
+
+  XMLHttpRequest.prototype.open =
+    function(
+      method,
+      url,
+      async,
+      user,
+      password
+    ) {
+
+      let finalUrl = url;
+
+
+      try {
+
+        // Convert relative URLs into
+        // absolute URLs.
+
+        finalUrl =
+          new URL(
+            url,
+            window.location.href
+          ).href;
+
+
+      } catch (error) {
+
+        console.warn(
+          "BetterProxy could not resolve XHR URL:",
+          url
+        );
+
+      }
+
+
+      if (
+        typeof finalUrl === "string" &&
+        (
+          finalUrl.startsWith("http://") ||
+          finalUrl.startsWith("https://")
+        )
+      ) {
+
+        finalUrl =
+          BACKEND +
+          "/proxy/" +
+          encodeTarget(
+            finalUrl
+          );
+
+
+        console.log(
+          "BetterProxy XHR:",
+          url
+        );
+
+      }
+
+
+      return originalOpen.call(
+        this,
+        method,
+        finalUrl,
+        async,
+        user,
+        password
+      );
+
+    };
+
+
+  // Keep the original send()
+  // behavior.
+
+  XMLHttpRequest.prototype.send =
+    function(body) {
+
+      return originalSend.call(
+        this,
+        body
+      );
+
+    };
+
+
+  console.log(
+    "BetterProxy request interceptors installed"
+  );
 
 })();
 </script>
 `;
+
 }
 
 
@@ -135,56 +266,105 @@ function testPage() {
       "https://example.com/"
     );
 
+
   return `<!DOCTYPE html>
 <html>
 
 <head>
+
   <meta charset="UTF-8">
 
   <title>
-    BetterProxy Phase 6C Test
+    BetterProxy Request Test
   </title>
+
+  <style>
+
+    body {
+      font-family: sans-serif;
+      padding: 30px;
+    }
+
+    button {
+      padding: 10px 16px;
+      margin-right: 10px;
+      cursor: pointer;
+    }
+
+    #message {
+      margin-top: 20px;
+      white-space: pre-wrap;
+    }
+
+  </style>
+
 </head>
+
 
 <body>
 
   <h1>
-    BetterProxy Phase 6C
+    BetterProxy Request Test
   </h1>
+
 
   <p id="message">
     Ready.
   </p>
 
-  <button id="test">
-    Test proxied fetch
+
+  <button id="fetchButton">
+    Test fetch()
   </button>
+
+
+  <button id="xhrButton">
+    Test XMLHttpRequest
+  </button>
+
 
   <script>
 
     const originalFetch =
       window.fetch;
 
+
     const BACKEND =
       "${BACKEND_URL}";
 
+
     function encodeTarget(url) {
+
       return btoa(url)
         .replace(/\\+/g, "-")
         .replace(/\\//g, "_")
         .replace(/=+$/, "");
+
     }
+
+
+    // ==================================
+    // FETCH TEST INTERCEPTOR
+    // ==================================
 
     window.fetch =
       function(input, init) {
 
         let url;
 
-        if (typeof input === "string") {
+
+        if (
+          typeof input === "string"
+        ) {
+
           url = input;
+
         } else {
+
           url = input.url;
+
         }
+
 
         if (
           url.startsWith("http://") ||
@@ -196,21 +376,94 @@ function testPage() {
             "/proxy/" +
             encodeTarget(url);
 
+
           return originalFetch(
             proxied,
             init
           );
+
         }
+
 
         return originalFetch(
           input,
           init
         );
+
       };
 
 
+    // ==================================
+    // XHR TEST INTERCEPTOR
+    // ==================================
+
+    const originalOpen =
+      XMLHttpRequest.prototype.open;
+
+
+    XMLHttpRequest.prototype.open =
+      function(
+        method,
+        url,
+        async,
+        user,
+        password
+      ) {
+
+        let finalUrl;
+
+
+        try {
+
+          finalUrl =
+            new URL(
+              url,
+              window.location.href
+            ).href;
+
+        } catch {
+
+          finalUrl = url;
+
+        }
+
+
+        if (
+          typeof finalUrl === "string" &&
+          (
+            finalUrl.startsWith("http://") ||
+            finalUrl.startsWith("https://")
+          )
+        ) {
+
+          finalUrl =
+            BACKEND +
+            "/proxy/" +
+            encodeTarget(
+              finalUrl
+            );
+
+        }
+
+
+        return originalOpen.call(
+          this,
+          method,
+          finalUrl,
+          async,
+          user,
+          password
+        );
+
+      };
+
+
+    // ==================================
+    // FETCH TEST
+    // ==================================
+
     document
-      .getElementById("test")
+      .getElementById("fetchButton")
       .addEventListener(
         "click",
         async function() {
@@ -220,8 +473,10 @@ function testPage() {
               "message"
             );
 
+
           message.textContent =
-            "Testing...";
+            "Testing fetch()...";
+
 
           try {
 
@@ -230,18 +485,24 @@ function testPage() {
                 "https://example.com/"
               );
 
+
             if (!response.ok) {
+
               throw new Error(
                 "HTTP " +
                 response.status
               );
+
             }
+
 
             const text =
               await response.text();
 
+
             message.textContent =
-              "Success! Received " +
+              "fetch() worked!\\n" +
+              "Received " +
               text.length +
               " characters.";
 
@@ -249,10 +510,83 @@ function testPage() {
 
             console.error(error);
 
+
             message.textContent =
-              "Failed: " +
+              "fetch() failed: " +
               error.message;
+
           }
+
+        }
+      );
+
+
+    // ==================================
+    // XHR TEST
+    // ==================================
+
+    document
+      .getElementById("xhrButton")
+      .addEventListener(
+        "click",
+        function() {
+
+          const message =
+            document.getElementById(
+              "message"
+            );
+
+
+          message.textContent =
+            "Testing XMLHttpRequest...";
+
+
+          const xhr =
+            new XMLHttpRequest();
+
+
+          xhr.open(
+            "GET",
+            "https://example.com/",
+            true
+          );
+
+
+          xhr.onload =
+            function() {
+
+              if (
+                xhr.status >= 200 &&
+                xhr.status < 300
+              ) {
+
+                message.textContent =
+                  "XMLHttpRequest worked!\\n" +
+                  "Received " +
+                  xhr.responseText.length +
+                  " characters.";
+
+              } else {
+
+                message.textContent =
+                  "XMLHttpRequest failed: HTTP " +
+                  xhr.status;
+
+              }
+
+            };
+
+
+          xhr.onerror =
+            function() {
+
+              message.textContent =
+                "XMLHttpRequest failed.";
+
+            };
+
+
+          xhr.send();
 
         }
       );
@@ -260,6 +594,7 @@ function testPage() {
   </script>
 
 </body>
+
 </html>`;
 }
 
@@ -273,11 +608,10 @@ function rewriteHtml(
   baseUrl
 ) {
 
-  // Inject fetch interceptor
-  // before the page's scripts.
+  // Inject both request interceptors.
 
   const interceptor =
-    fetchInterceptor();
+    requestInterceptor();
 
 
   if (
@@ -301,9 +635,9 @@ function rewriteHtml(
   }
 
 
-  // -------------------------------
+  // --------------------------------
   // Links
-  // -------------------------------
+  // --------------------------------
 
   html = html.replace(
     /(<a\b[^>]*?\bhref\s*=\s*["'])([^"']+)(["'])/gi,
@@ -323,16 +657,16 @@ function rewriteHtml(
             baseUrl
           ).href;
 
+
         if (
-          !absolute.startsWith(
-            "http://"
-          ) &&
-          !absolute.startsWith(
-            "https://"
-          )
+          !absolute.startsWith("http://") &&
+          !absolute.startsWith("https://")
         ) {
+
           return match;
+
         }
+
 
         return (
           start +
@@ -343,14 +677,16 @@ function rewriteHtml(
       } catch {
 
         return match;
+
       }
+
     }
   );
 
 
-  // -------------------------------
+  // --------------------------------
   // Images
-  // -------------------------------
+  // --------------------------------
 
   html = html.replace(
     /(<img\b[^>]*?\bsrc\s*=\s*["'])([^"']+)(["'])/gi,
@@ -370,6 +706,7 @@ function rewriteHtml(
             baseUrl
           ).href;
 
+
         return (
           start +
           proxyUrl(absolute) +
@@ -379,14 +716,16 @@ function rewriteHtml(
       } catch {
 
         return match;
+
       }
+
     }
   );
 
 
-  // -------------------------------
+  // --------------------------------
   // Stylesheets
-  // -------------------------------
+  // --------------------------------
 
   html = html.replace(
     /(<link\b[^>]*?\bhref\s*=\s*["'])([^"']+)(["'])/gi,
@@ -406,6 +745,7 @@ function rewriteHtml(
             baseUrl
           ).href;
 
+
         return (
           start +
           proxyUrl(absolute) +
@@ -415,14 +755,16 @@ function rewriteHtml(
       } catch {
 
         return match;
+
       }
+
     }
   );
 
 
-  // -------------------------------
+  // --------------------------------
   // External JavaScript
-  // -------------------------------
+  // --------------------------------
 
   html = html.replace(
     /(<script\b[^>]*?\bsrc\s*=\s*["'])([^"']+)(["'])/gi,
@@ -442,6 +784,7 @@ function rewriteHtml(
             baseUrl
           ).href;
 
+
         return (
           start +
           proxyUrl(absolute) +
@@ -451,7 +794,9 @@ function rewriteHtml(
       } catch {
 
         return match;
+
       }
+
     }
   );
 
@@ -481,12 +826,16 @@ function rewriteCss(
       const trimmed =
         url.trim();
 
+
       if (
         trimmed.startsWith("data:") ||
         trimmed.startsWith("blob:")
       ) {
+
         return match;
+
       }
+
 
       try {
 
@@ -496,6 +845,7 @@ function rewriteCss(
             baseUrl
           ).href;
 
+
         return (
           `url("${proxyUrl(absolute)}")`
         );
@@ -503,7 +853,9 @@ function rewriteCss(
       } catch {
 
         return match;
+
       }
+
     }
   );
 }
@@ -523,9 +875,9 @@ const server =
       );
 
 
-      // -------------------------------
+      // --------------------------------
       // CORS
-      // -------------------------------
+      // --------------------------------
 
       res.setHeader(
         "Access-Control-Allow-Origin",
@@ -533,9 +885,9 @@ const server =
       );
 
 
-      // -------------------------------
+      // --------------------------------
       // OPTIONS
-      // -------------------------------
+      // --------------------------------
 
       if (
         req.method === "OPTIONS"
@@ -555,15 +907,18 @@ const server =
           }
         );
 
+
         res.end();
 
+
         return;
+
       }
 
 
-      // -------------------------------
+      // --------------------------------
       // Homepage
-      // -------------------------------
+      // --------------------------------
 
       if (
         req.url === "/"
@@ -577,17 +932,20 @@ const server =
           }
         );
 
+
         res.end(
           "BetterProxy backend is running!"
         );
 
+
         return;
+
       }
 
 
-      // -------------------------------
+      // --------------------------------
       // Backend test
-      // -------------------------------
+      // --------------------------------
 
       if (
         req.url === "/proxy/test"
@@ -601,17 +959,20 @@ const server =
           }
         );
 
+
         res.end(
           "Backend works! 🎉"
         );
 
+
         return;
+
       }
 
 
-      // -------------------------------
-      // Phase 6C test
-      // -------------------------------
+      // --------------------------------
+      // Test page
+      // --------------------------------
 
       if (
         req.url === "/test"
@@ -625,17 +986,20 @@ const server =
           }
         );
 
+
         res.end(
           testPage()
         );
 
+
         return;
+
       }
 
 
-      // -------------------------------
+      // --------------------------------
       // Proxy route
-      // -------------------------------
+      // --------------------------------
 
       if (
         !req.url.startsWith(
@@ -651,22 +1015,26 @@ const server =
           }
         );
 
+
         res.end(
           "Not found"
         );
 
+
         return;
+
       }
 
 
-      // -------------------------------
-      // Decode URL
-      // -------------------------------
+      // --------------------------------
+      // Decode target
+      // --------------------------------
 
       const encoded =
         req.url.slice(
           "/proxy/".length
         );
+
 
       const target =
         decodeTarget(
@@ -684,11 +1052,14 @@ const server =
           }
         );
 
+
         res.end(
           "Invalid encoded URL"
         );
 
+
         return;
+
       }
 
 
@@ -698,11 +1069,12 @@ const server =
       );
 
 
-      // -------------------------------
+      // --------------------------------
       // Parse target
-      // -------------------------------
+      // --------------------------------
 
       let targetURL;
+
 
       try {
 
@@ -721,17 +1093,20 @@ const server =
           }
         );
 
+
         res.end(
           "Invalid target URL"
         );
 
+
         return;
+
       }
 
 
-      // -------------------------------
+      // --------------------------------
       // Allowlist
-      // -------------------------------
+      // --------------------------------
 
       if (
         !allowedHosts.includes(
@@ -744,6 +1119,7 @@ const server =
           targetURL.hostname
         );
 
+
         res.writeHead(
           403,
           {
@@ -752,17 +1128,20 @@ const server =
           }
         );
 
+
         res.end(
           "This site is not enabled yet."
         );
 
+
         return;
+
       }
 
 
-      // -------------------------------
+      // --------------------------------
       // Fetch target
-      // -------------------------------
+      // --------------------------------
 
       try {
 
@@ -795,9 +1174,9 @@ const server =
         );
 
 
-        // -----------------------------
+        // --------------------------------
         // Redirects
-        // -----------------------------
+        // --------------------------------
 
         if (
           response.status === 301 ||
@@ -819,9 +1198,12 @@ const server =
               response.status
             );
 
+
             res.end();
 
+
             return;
+
           }
 
 
@@ -854,11 +1236,14 @@ const server =
                 }
               );
 
+
               res.end(
                 "Redirect target is not enabled."
               );
 
+
               return;
+
             }
 
 
@@ -872,6 +1257,7 @@ const server =
               }
             );
 
+
             res.end();
 
 
@@ -879,6 +1265,7 @@ const server =
               "Proxy redirect:",
               redirectTarget
             );
+
 
             return;
 
@@ -892,18 +1279,22 @@ const server =
               }
             );
 
+
             res.end(
               "Invalid redirect"
             );
 
+
             return;
+
           }
+
         }
 
 
-        // -----------------------------
+        // --------------------------------
         // HTML
-        // -----------------------------
+        // --------------------------------
 
         if (
           contentType.includes(
@@ -935,13 +1326,15 @@ const server =
             body
           );
 
+
           return;
+
         }
 
 
-        // -----------------------------
+        // --------------------------------
         // CSS
-        // -----------------------------
+        // --------------------------------
 
         if (
           contentType.includes(
@@ -976,13 +1369,15 @@ const server =
             body
           );
 
+
           return;
+
         }
 
 
-        // -----------------------------
+        // --------------------------------
         // Other resources
-        // -----------------------------
+        // --------------------------------
 
         const buffer =
           Buffer.from(
@@ -1020,16 +1415,19 @@ const server =
           }
         );
 
+
         res.end(
           "Backend fetch failed"
         );
+
       }
+
     }
   );
 
 
 // ====================================
-// START
+// START SERVER
 // ====================================
 
 server.listen(
