@@ -65,195 +65,70 @@ function proxyUrl(url) {
 function testPage() {
   return `<!DOCTYPE html>
 <html>
-
 <head>
   <meta charset="UTF-8">
-
-  <title>
-    BetterProxy Fetch Test
-  </title>
-
-  <style>
-    body {
-      font-family: sans-serif;
-      padding: 30px;
-    }
-
-    button {
-      padding: 10px 16px;
-      cursor: pointer;
-    }
-
-    #message {
-      margin: 20px 0;
-    }
-  </style>
+  <title>BetterProxy API Test</title>
 </head>
 
 <body>
 
-  <h1>
-    BetterProxy Fetch Test
-  </h1>
+  <h1>BetterProxy API Test</h1>
 
   <p id="message">
-    JavaScript has not run yet.
+    Ready.
   </p>
 
   <button id="testButton">
-    Test intercepted fetch
+    Test API Request
   </button>
 
-
   <script>
+    const message =
+      document.getElementById("message");
 
-    // Save the original browser fetch.
-    const originalFetch = window.fetch;
+    const button =
+      document.getElementById("testButton");
 
-
-    // BetterProxy backend.
-    const BACKEND =
-      "https://betterproxy-backend.onrender.com";
-
-
-    // Encode a target URL.
-    function encodeTarget(url) {
-
-      return btoa(url)
-        .replace(/\\+/g, "-")
-        .replace(/\\//g, "_")
-        .replace(/=+$/, "");
-
-    }
-
-
-    // Intercept fetch().
-    window.fetch = function(input, init) {
-
-      let url;
-
-
-      if (typeof input === "string") {
-
-        url = input;
-
-      } else if (input && input.url) {
-
-        url = input.url;
-
-      } else {
-
-        return originalFetch(
-          input,
-          init
-        );
-
-      }
-
-
-      // Only proxy absolute HTTP/HTTPS URLs.
-      if (
-        url.startsWith("http://") ||
-        url.startsWith("https://")
-      ) {
-
-        const proxied =
-          BACKEND +
-          "/proxy/" +
-          encodeTarget(url);
-
-
-        console.log(
-          "BetterProxy intercepted fetch:",
-          url
-        );
-
-
-        return originalFetch(
-          proxied,
-          init
-        );
-      }
-
-
-      // Leave relative URLs alone.
-      return originalFetch(
-        input,
-        init
-      );
-    };
-
-
-    // Show that the interceptor installed.
-    document.getElementById(
-      "message"
-    ).textContent =
-      "Fetch interceptor installed!";
-
-
-    // Test button.
-    document.getElementById(
-      "testButton"
-    ).addEventListener(
+    button.addEventListener(
       "click",
-      async function() {
-
-        const message =
-          document.getElementById(
-            "message"
-          );
-
+      async function () {
 
         message.textContent =
-          "Sending intercepted request...";
-
+          "Sending request...";
 
         try {
 
           const response =
             await fetch(
-              "https://example.com/"
+              "/proxy/test"
             );
 
-
           if (!response.ok) {
-
             throw new Error(
               "HTTP " +
               response.status
             );
-
           }
-
 
           const text =
             await response.text();
 
-
           message.textContent =
-            "Intercepted fetch worked! " +
-            "Received " +
-            text.length +
-            " characters.";
-
+            "API request worked: " +
+            text;
 
         } catch (error) {
 
-          console.error(
-            "Fetch error:",
-            error
-          );
-
+          console.error(error);
 
           message.textContent =
-            "Fetch failed: " +
+            "API request failed: " +
             error.message;
 
         }
 
       }
     );
-
   </script>
 
 </body>
