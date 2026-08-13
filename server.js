@@ -64,7 +64,7 @@ function proxyUrl(url) {
 
 
 // ====================================
-// FETCH + XMLHttpRequest INTERCEPTOR
+// FETCH + XHR INTERCEPTOR
 // ====================================
 
 function requestInterceptor() {
@@ -73,91 +73,100 @@ function requestInterceptor() {
 <script>
 (function () {
 
-  // ==================================
-  // FETCH INTERCEPTION
-  // ==================================
-
-  const originalFetch = window.fetch;
-
   const BACKEND =
     "${BACKEND_URL}";
 
 
+  // ==================================
+  // URL ENCODER
+  // ==================================
+
   function encodeTarget(url) {
 
     return btoa(url)
-      .replace(/\\\\+/g, "-")
-      .replace(/\\\\//g, "_")
+      .replace(/\\+/g, "-")
+      .replace(/\\//g, "_")
       .replace(/=+$/, "");
 
   }
 
 
-  window.fetch = function(input, init) {
+  // ==================================
+  // FETCH INTERCEPTOR
+  // ==================================
 
-    let url;
+  const originalFetch =
+    window.fetch;
 
-    if (typeof input === "string") {
 
-      url = input;
+  window.fetch =
+    function(input, init) {
 
-    } else if (input && input.url) {
+      let url;
 
-      url = input.url;
 
-    } else {
+      if (
+        typeof input === "string"
+      ) {
+
+        url = input;
+
+      } else if (
+        input &&
+        input.url
+      ) {
+
+        url = input.url;
+
+      } else {
+
+        return originalFetch(
+          input,
+          init
+        );
+
+      }
+
+
+      if (
+        url.startsWith("http://") ||
+        url.startsWith("https://")
+      ) {
+
+        const proxied =
+          BACKEND +
+          "/proxy/" +
+          encodeTarget(url);
+
+
+        console.log(
+          "BetterProxy fetch:",
+          url
+        );
+
+
+        return originalFetch(
+          proxied,
+          init
+        );
+
+      }
+
 
       return originalFetch(
         input,
         init
       );
 
-    }
-
-
-    if (
-      url.startsWith("http://") ||
-      url.startsWith("https://")
-    ) {
-
-      const proxied =
-        BACKEND +
-        "/proxy/" +
-        encodeTarget(url);
-
-
-      console.log(
-        "BetterProxy fetch:",
-        url
-      );
-
-
-      return originalFetch(
-        proxied,
-        init
-      );
-
-    }
-
-
-    return originalFetch(
-      input,
-      init
-    );
-
-  };
+    };
 
 
   // ==================================
-  // XMLHttpRequest INTERCEPTION
+  // XMLHttpRequest INTERCEPTOR
   // ==================================
 
   const originalOpen =
     XMLHttpRequest.prototype.open;
-
-
-  const originalSend =
-    XMLHttpRequest.prototype.send;
 
 
   XMLHttpRequest.prototype.open =
@@ -169,13 +178,11 @@ function requestInterceptor() {
       password
     ) {
 
-      let finalUrl = url;
+      let finalUrl =
+        url;
 
 
       try {
-
-        // Convert relative URLs into
-        // absolute URLs.
 
         finalUrl =
           new URL(
@@ -183,11 +190,10 @@ function requestInterceptor() {
             window.location.href
           ).href;
 
-
-      } catch (error) {
+      } catch {
 
         console.warn(
-          "BetterProxy could not resolve XHR URL:",
+          "Could not resolve XHR URL:",
           url
         );
 
@@ -202,18 +208,18 @@ function requestInterceptor() {
         )
       ) {
 
+        console.log(
+          "BetterProxy XHR:",
+          finalUrl
+        );
+
+
         finalUrl =
           BACKEND +
           "/proxy/" +
           encodeTarget(
             finalUrl
           );
-
-
-        console.log(
-          "BetterProxy XHR:",
-          url
-        );
 
       }
 
@@ -230,22 +236,8 @@ function requestInterceptor() {
     };
 
 
-  // Keep the original send()
-  // behavior.
-
-  XMLHttpRequest.prototype.send =
-    function(body) {
-
-      return originalSend.call(
-        this,
-        body
-      );
-
-    };
-
-
   console.log(
-    "BetterProxy request interceptors installed"
+    "BetterProxy fetch + XHR interceptors installed"
   );
 
 })();
@@ -256,16 +248,10 @@ function requestInterceptor() {
 
 
 // ====================================
-// TEST PAGE
+// CONTROLLED TEST PAGE
 // ====================================
 
 function testPage() {
-
-  const exampleProxy =
-    proxyUrl(
-      "https://example.com/"
-    );
-
 
   return `<!DOCTYPE html>
 <html>
@@ -275,7 +261,7 @@ function testPage() {
   <meta charset="UTF-8">
 
   <title>
-    BetterProxy Request Test
+    BetterProxy Background Request Test
   </title>
 
   <style>
@@ -283,17 +269,20 @@ function testPage() {
     body {
       font-family: sans-serif;
       padding: 30px;
+      line-height: 1.5;
     }
 
     button {
       padding: 10px 16px;
-      margin-right: 10px;
+      margin: 5px;
       cursor: pointer;
     }
 
     #message {
       margin-top: 20px;
+      padding: 15px;
       white-space: pre-wrap;
+      border: 1px solid #ccc;
     }
 
   </style>
@@ -304,12 +293,13 @@ function testPage() {
 <body>
 
   <h1>
-    BetterProxy Request Test
+    BetterProxy Background Request Test
   </h1>
 
 
-  <p id="message">
-    Ready.
+  <p>
+    These buttons deliberately make requests to
+    example.com through the BetterProxy interceptor.
   </p>
 
 
@@ -323,15 +313,31 @@ function testPage() {
   </button>
 
 
+  <button id="bothButton">
+    Test Both
+  </button>
+
+
+  <div id="message">
+    Ready.
+  </div>
+
+
   <script>
-
-    const originalFetch =
-      window.fetch;
-
 
     const BACKEND =
       "${BACKEND_URL}";
 
+
+    const message =
+      document.getElementById(
+        "message"
+      );
+
+
+    // ==================================
+    // ENCODER
+    // ==================================
 
     function encodeTarget(url) {
 
@@ -344,8 +350,12 @@ function testPage() {
 
 
     // ==================================
-    // FETCH TEST INTERCEPTOR
+    // FETCH INTERCEPTOR
     // ==================================
+
+    const originalFetch =
+      window.fetch;
+
 
     window.fetch =
       function(input, init) {
@@ -359,9 +369,19 @@ function testPage() {
 
           url = input;
 
-        } else {
+        } else if (
+          input &&
+          input.url
+        ) {
 
           url = input.url;
+
+        } else {
+
+          return originalFetch(
+            input,
+            init
+          );
 
         }
 
@@ -375,6 +395,12 @@ function testPage() {
             BACKEND +
             "/proxy/" +
             encodeTarget(url);
+
+
+          console.log(
+            "Test fetch intercepted:",
+            url
+          );
 
 
           return originalFetch(
@@ -394,7 +420,7 @@ function testPage() {
 
 
     // ==================================
-    // XHR TEST INTERCEPTOR
+    // XHR INTERCEPTOR
     // ==================================
 
     const originalOpen =
@@ -423,7 +449,8 @@ function testPage() {
 
         } catch {
 
-          finalUrl = url;
+          finalUrl =
+            url;
 
         }
 
@@ -435,6 +462,12 @@ function testPage() {
             finalUrl.startsWith("https://")
           )
         ) {
+
+          console.log(
+            "Test XHR intercepted:",
+            finalUrl
+          );
+
 
           finalUrl =
             BACKEND +
@@ -462,84 +495,57 @@ function testPage() {
     // FETCH TEST
     // ==================================
 
-    document
-      .getElementById("fetchButton")
-      .addEventListener(
-        "click",
-        async function() {
+    async function testFetch() {
 
-          const message =
-            document.getElementById(
-              "message"
-            );
+      try {
+
+        const response =
+          await fetch(
+            "https://example.com/"
+          );
 
 
-          message.textContent =
-            "Testing fetch()...";
+        if (!response.ok) {
 
-
-          try {
-
-            const response =
-              await fetch(
-                "https://example.com/"
-              );
-
-
-            if (!response.ok) {
-
-              throw new Error(
-                "HTTP " +
-                response.status
-              );
-
-            }
-
-
-            const text =
-              await response.text();
-
-
-            message.textContent =
-              "fetch() worked!\\n" +
-              "Received " +
-              text.length +
-              " characters.";
-
-          } catch (error) {
-
-            console.error(error);
-
-
-            message.textContent =
-              "fetch() failed: " +
-              error.message;
-
-          }
+          throw new Error(
+            "HTTP " +
+            response.status
+          );
 
         }
-      );
+
+
+        const text =
+          await response.text();
+
+
+        return (
+          "fetch(): SUCCESS - " +
+          text.length +
+          " characters received"
+        );
+
+
+      } catch (error) {
+
+        return (
+          "fetch(): FAILED - " +
+          error.message
+        );
+
+      }
+
+    }
 
 
     // ==================================
     // XHR TEST
     // ==================================
 
-    document
-      .getElementById("xhrButton")
-      .addEventListener(
-        "click",
-        function() {
+    function testXHR() {
 
-          const message =
-            document.getElementById(
-              "message"
-            );
-
-
-          message.textContent =
-            "Testing XMLHttpRequest...";
-
+      return new Promise(
+        function(resolve) {
 
           const xhr =
             new XMLHttpRequest();
@@ -560,17 +566,18 @@ function testPage() {
                 xhr.status < 300
               ) {
 
-                message.textContent =
-                  "XMLHttpRequest worked!\\n" +
-                  "Received " +
+                resolve(
+                  "XMLHttpRequest: SUCCESS - " +
                   xhr.responseText.length +
-                  " characters.";
+                  " characters received"
+                );
 
               } else {
 
-                message.textContent =
-                  "XMLHttpRequest failed: HTTP " +
-                  xhr.status;
+                resolve(
+                  "XMLHttpRequest: FAILED - HTTP " +
+                  xhr.status
+                );
 
               }
 
@@ -580,8 +587,9 @@ function testPage() {
           xhr.onerror =
             function() {
 
-              message.textContent =
-                "XMLHttpRequest failed.";
+              resolve(
+                "XMLHttpRequest: FAILED - network error"
+              );
 
             };
 
@@ -590,6 +598,100 @@ function testPage() {
 
         }
       );
+
+    }
+
+
+    // ==================================
+    // FETCH BUTTON
+    // ==================================
+
+    document
+      .getElementById(
+        "fetchButton"
+      )
+      .addEventListener(
+        "click",
+        async function() {
+
+          message.textContent =
+            "Running fetch() test...";
+
+
+          const result =
+            await testFetch();
+
+
+          message.textContent =
+            result;
+
+        }
+      );
+
+
+    // ==================================
+    // XHR BUTTON
+    // ==================================
+
+    document
+      .getElementById(
+        "xhrButton"
+      )
+      .addEventListener(
+        "click",
+        async function() {
+
+          message.textContent =
+            "Running XMLHttpRequest test...";
+
+
+          const result =
+            await testXHR();
+
+
+          message.textContent =
+            result;
+
+        }
+      );
+
+
+    // ==================================
+    // BOTH BUTTON
+    // ==================================
+
+    document
+      .getElementById(
+        "bothButton"
+      )
+      .addEventListener(
+        "click",
+        async function() {
+
+          message.textContent =
+            "Running both tests...";
+
+
+          const fetchResult =
+            await testFetch();
+
+
+          const xhrResult =
+            await testXHR();
+
+
+          message.textContent =
+            fetchResult +
+            "\\n\\n" +
+            xhrResult;
+
+        }
+      );
+
+
+    console.log(
+      "Controlled background-request test ready"
+    );
 
   </script>
 
@@ -608,7 +710,7 @@ function rewriteHtml(
   baseUrl
 ) {
 
-  // Inject both request interceptors.
+  // Inject interceptors.
 
   const interceptor =
     requestInterceptor();
@@ -910,7 +1012,6 @@ const server =
 
         res.end();
 
-
         return;
 
       }
@@ -971,7 +1072,7 @@ const server =
 
 
       // --------------------------------
-      // Test page
+      // Controlled background test
       // --------------------------------
 
       if (
@@ -1200,7 +1301,6 @@ const server =
 
 
             res.end();
-
 
             return;
 
