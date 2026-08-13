@@ -5,6 +5,11 @@ const PORT = process.env.PORT || 10000;
 const BACKEND_URL =
   "https://betterproxy-backend.onrender.com";
 
+
+// ====================================
+// Allowed test sites
+// ====================================
+
 const allowedHosts = [
   "example.com",
   "www.example.com",
@@ -16,8 +21,17 @@ const allowedHosts = [
 
 
 // ====================================
-// URL ENCODING
+// URL encoding
 // ====================================
+
+function encodeTarget(url) {
+  return Buffer.from(url)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
 
 function decodeTarget(encoded) {
   try {
@@ -40,15 +54,6 @@ function decodeTarget(encoded) {
 }
 
 
-function encodeTarget(url) {
-  return Buffer.from(url)
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-
 function proxyUrl(url) {
   return (
     BACKEND_URL +
@@ -59,85 +64,135 @@ function proxyUrl(url) {
 
 
 // ====================================
-// JAVASCRIPT FETCH TEST PAGE
+// Built-in API test page
 // ====================================
 
 function testPage() {
+  const exampleProxyUrl =
+    proxyUrl("https://example.com/");
+
   return `<!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="UTF-8">
-  <title>BetterProxy API Test</title>
+
+  <title>
+    BetterProxy External Request Test
+  </title>
+
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 30px;
+    }
+
+    button {
+      padding: 10px 16px;
+      cursor: pointer;
+    }
+
+    #message {
+      margin: 20px 0;
+      white-space: pre-wrap;
+    }
+  </style>
 </head>
 
 <body>
 
-  <h1>BetterProxy API Test</h1>
+  <h1>
+    BetterProxy External Request Test
+  </h1>
 
   <p id="message">
     Ready.
   </p>
 
   <button id="testButton">
-    Test API Request
+    Test example.com
   </button>
 
+
   <script>
+
     const message =
       document.getElementById("message");
 
     const button =
       document.getElementById("testButton");
 
+
     button.addEventListener(
       "click",
-      async function () {
+      async function() {
 
         message.textContent =
-          "Sending request...";
+          "Requesting example.com through BetterProxy...";
+
 
         try {
 
           const response =
             await fetch(
-              "/proxy/test"
+              ${JSON.stringify(exampleProxyUrl)}
             );
 
+
           if (!response.ok) {
+
             throw new Error(
               "HTTP " +
               response.status
             );
+
           }
+
 
           const text =
             await response.text();
 
+
           message.textContent =
-            "API request worked: " +
-            text;
+            "External request worked!\\n\\n" +
+            "Received " +
+            text.length +
+            " characters from example.com.";
+
+
+          console.log(
+            "Received response:",
+            text
+          );
+
 
         } catch (error) {
 
-          console.error(error);
+          console.error(
+            "External request failed:",
+            error
+          );
+
 
           message.textContent =
-            "API request failed: " +
+            "External request failed: " +
             error.message;
 
         }
 
       }
     );
+
   </script>
 
 </body>
+
 </html>`;
 }
 
 
 // ====================================
-// HTML REWRITING
+// HTML rewriting
 // ====================================
 
 function rewriteHtml(
@@ -145,12 +200,9 @@ function rewriteHtml(
   baseUrl
 ) {
 
-  // -------------------------------
   // Links
-  // -------------------------------
-
   html = html.replace(
-    /(<a\b[^>]*?\bhref\s*=\s*["'])([^"']+)(["'])/gi,
+    /(<a\\b[^>]*?\\bhref\\s*=\\s*["'])([^"']+)(["'])/gi,
 
     (
       match,
@@ -169,16 +221,10 @@ function rewriteHtml(
 
 
         if (
-          !absolute.startsWith(
-            "http://"
-          ) &&
-          !absolute.startsWith(
-            "https://"
-          )
+          !absolute.startsWith("http://") &&
+          !absolute.startsWith("https://")
         ) {
-
           return match;
-
         }
 
 
@@ -198,12 +244,9 @@ function rewriteHtml(
   );
 
 
-  // -------------------------------
   // Images
-  // -------------------------------
-
   html = html.replace(
-    /(<img\b[^>]*?\bsrc\s*=\s*["'])([^"']+)(["'])/gi,
+    /(<img\\b[^>]*?\\bsrc\\s*=\\s*["'])([^"']+)(["'])/gi,
 
     (
       match,
@@ -237,12 +280,9 @@ function rewriteHtml(
   );
 
 
-  // -------------------------------
   // Stylesheets
-  // -------------------------------
-
   html = html.replace(
-    /(<link\b[^>]*?\bhref\s*=\s*["'])([^"']+)(["'])/gi,
+    /(<link\\b[^>]*?\\bhref\\s*=\\s*["'])([^"']+)(["'])/gi,
 
     (
       match,
@@ -276,12 +316,9 @@ function rewriteHtml(
   );
 
 
-  // -------------------------------
   // External JavaScript
-  // -------------------------------
-
   html = html.replace(
-    /(<script\b[^>]*?\bsrc\s*=\s*["'])([^"']+)(["'])/gi,
+    /(<script\\b[^>]*?\\bsrc\\s*=\\s*["'])([^"']+)(["'])/gi,
 
     (
       match,
@@ -320,7 +357,7 @@ function rewriteHtml(
 
 
 // ====================================
-// CSS REWRITING
+// CSS rewriting
 // ====================================
 
 function rewriteCss(
@@ -342,16 +379,10 @@ function rewriteCss(
 
 
       if (
-        trimmed.startsWith(
-          "data:"
-        ) ||
-        trimmed.startsWith(
-          "blob:"
-        )
+        trimmed.startsWith("data:") ||
+        trimmed.startsWith("blob:")
       ) {
-
         return match;
-
       }
 
 
@@ -380,7 +411,7 @@ function rewriteCss(
 
 
 // ====================================
-// SERVER
+// Server
 // ====================================
 
 const server =
@@ -393,9 +424,9 @@ const server =
       );
 
 
-      // -------------------------------
+      // --------------------------------
       // CORS
-      // -------------------------------
+      // --------------------------------
 
       res.setHeader(
         "Access-Control-Allow-Origin",
@@ -403,9 +434,9 @@ const server =
       );
 
 
-      // -------------------------------
-      // OPTIONS / CORS preflight
-      // -------------------------------
+      // --------------------------------
+      // OPTIONS
+      // --------------------------------
 
       if (
         req.method === "OPTIONS"
@@ -431,9 +462,9 @@ const server =
       }
 
 
-      // -------------------------------
+      // --------------------------------
       // Homepage
-      // -------------------------------
+      // --------------------------------
 
       if (
         req.url === "/"
@@ -447,19 +478,17 @@ const server =
           }
         );
 
-
         res.end(
           "BetterProxy backend is running!"
         );
-
 
         return;
       }
 
 
-      // -------------------------------
+      // --------------------------------
       // Backend test
-      // -------------------------------
+      // --------------------------------
 
       if (
         req.url === "/proxy/test"
@@ -473,19 +502,17 @@ const server =
           }
         );
 
-
         res.end(
           "Backend works! 🎉"
         );
-
 
         return;
       }
 
 
-      // -------------------------------
-      // JavaScript test page
-      // -------------------------------
+      // --------------------------------
+      // External request test page
+      // --------------------------------
 
       if (
         req.url === "/test"
@@ -499,24 +526,20 @@ const server =
           }
         );
 
-
         res.end(
           testPage()
         );
-
 
         return;
       }
 
 
-      // -------------------------------
+      // --------------------------------
       // Proxy route
-      // -------------------------------
+      // --------------------------------
 
       if (
-        !req.url.startsWith(
-          "/proxy/"
-        )
+        !req.url.startsWith("/proxy/")
       ) {
 
         res.writeHead(
@@ -527,19 +550,17 @@ const server =
           }
         );
 
-
         res.end(
           "Not found"
         );
-
 
         return;
       }
 
 
-      // -------------------------------
+      // --------------------------------
       // Decode target
-      // -------------------------------
+      // --------------------------------
 
       const encoded =
         req.url.slice(
@@ -563,11 +584,9 @@ const server =
           }
         );
 
-
         res.end(
           "Invalid encoded URL"
         );
-
 
         return;
       }
@@ -579,19 +598,16 @@ const server =
       );
 
 
-      // -------------------------------
-      // Parse URL
-      // -------------------------------
+      // --------------------------------
+      // Parse target URL
+      // --------------------------------
 
       let targetURL;
-
 
       try {
 
         targetURL =
-          new URL(
-            target
-          );
+          new URL(target);
 
       } catch {
 
@@ -603,25 +619,29 @@ const server =
           }
         );
 
-
         res.end(
           "Invalid target URL"
         );
-
 
         return;
       }
 
 
-      // -------------------------------
-      // Allowed host
-      // -------------------------------
+      // --------------------------------
+      // Allowlist
+      // --------------------------------
 
       if (
         !allowedHosts.includes(
           targetURL.hostname
         )
       ) {
+
+        console.log(
+          "Blocked host:",
+          targetURL.hostname
+        );
+
 
         res.writeHead(
           403,
@@ -631,19 +651,17 @@ const server =
           }
         );
 
-
         res.end(
           "This site is not enabled yet."
         );
-
 
         return;
       }
 
 
-      // -------------------------------
+      // --------------------------------
       // Fetch target
-      // -------------------------------
+      // --------------------------------
 
       try {
 
@@ -651,8 +669,7 @@ const server =
           await fetch(
             targetURL.href,
             {
-              redirect:
-                "manual",
+              redirect: "manual",
 
               headers: {
                 "User-Agent":
@@ -676,9 +693,9 @@ const server =
         );
 
 
-        // -----------------------------
-        // Redirect
-        // -----------------------------
+        // --------------------------------
+        // Redirects
+        // --------------------------------
 
         if (
           response.status === 301 ||
@@ -735,11 +752,9 @@ const server =
                 }
               );
 
-
               res.end(
                 "Redirect target is not enabled."
               );
-
 
               return;
             }
@@ -777,20 +792,18 @@ const server =
               }
             );
 
-
             res.end(
               "Invalid redirect"
             );
-
 
             return;
           }
         }
 
 
-        // -----------------------------
+        // --------------------------------
         // HTML
-        // -----------------------------
+        // --------------------------------
 
         if (
           contentType.includes(
@@ -822,14 +835,13 @@ const server =
             body
           );
 
-
           return;
         }
 
 
-        // -----------------------------
+        // --------------------------------
         // CSS
-        // -----------------------------
+        // --------------------------------
 
         if (
           contentType.includes(
@@ -864,14 +876,13 @@ const server =
             body
           );
 
-
           return;
         }
 
 
-        // -----------------------------
-        // Binary / other resources
-        // -----------------------------
+        // --------------------------------
+        // Other resources
+        // --------------------------------
 
         const buffer =
           Buffer.from(
@@ -919,7 +930,7 @@ const server =
 
 
 // ====================================
-// START SERVER
+// Start server
 // ====================================
 
 server.listen(
