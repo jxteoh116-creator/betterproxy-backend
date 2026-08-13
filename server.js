@@ -15,8 +15,8 @@ const allowedHosts = [
   "www.example.org",
   "iana.org",
   "www.iana.org",
-  "httpbin.org",
-  "www.httpbin.org"
+  "postman-echo.com",
+  "www.postman-echo.com"
 ];
 
 
@@ -77,7 +77,7 @@ function readRequestBody(req) {
 
 
 // ====================================
-// FORWARDABLE HEADERS
+// FORWARD HEADERS
 // ====================================
 
 function getForwardHeaders(req) {
@@ -86,7 +86,6 @@ function getForwardHeaders(req) {
   for (const [name, value] of Object.entries(req.headers)) {
     const lower = name.toLowerCase();
 
-    // These are controlled by fetch/Node.
     if (
       lower === "host" ||
       lower === "content-length" ||
@@ -100,7 +99,6 @@ function getForwardHeaders(req) {
     }
   }
 
-  // Use a normal user agent if the browser didn't provide one.
   if (!headers["user-agent"]) {
     headers["user-agent"] = "BetterProxy/1.0";
   }
@@ -252,13 +250,13 @@ function requestInterceptor(baseUrl) {
 
 
 // ====================================
-// CONTROLLED METHOD TEST
+// CONTROLLED METHOD TEST PAGE
 // ====================================
 
 function testPage() {
 
   const simulatedOrigin =
-    "https://httpbin.org/";
+    "https://postman-echo.com/";
 
 
   return `<!DOCTYPE html>
@@ -268,7 +266,7 @@ function testPage() {
 
   <meta charset="UTF-8">
 
-  <base href="https://httpbin.org/">
+  <base href="https://postman-echo.com/">
 
   <title>
     BetterProxy Method Test
@@ -348,10 +346,10 @@ function testPage() {
 
 
     // ==================================
-    // TEST FETCH METHOD
+    // TEST METHOD
     // ==================================
 
-    async function testFetchMethod(method) {
+    async function testMethod(method) {
 
       try {
 
@@ -377,7 +375,10 @@ function testPage() {
 
 
         const response =
-          await fetch("/anything", options);
+          await fetch(
+            "/anything",
+            options
+          );
 
 
         const text =
@@ -397,7 +398,7 @@ function testPage() {
         }
 
 
-        let data;
+        let data = null;
 
         try {
           data = JSON.parse(text);
@@ -408,19 +409,27 @@ function testPage() {
 
         if (data) {
 
-          return (
+          let result =
             method +
-            " → SUCCESS\\n" +
-            "Server saw method: " +
-            data.method +
-            "\\n" +
-            "Server saw body: " +
-            (
-              data.json
-                ? JSON.stringify(data.json)
-                : "(none)"
-            )
-          );
+            " → SUCCESS\\n";
+
+
+          if (data.method) {
+            result +=
+              "Server saw method: " +
+              data.method +
+              "\\n";
+          }
+
+
+          if (data.json) {
+            result +=
+              "Server saw JSON body: " +
+              JSON.stringify(data.json);
+          }
+
+
+          return result;
 
         }
 
@@ -458,7 +467,7 @@ function testPage() {
             "Testing POST...";
 
           message.textContent =
-            await testFetchMethod("POST");
+            await testMethod("POST");
 
         }
       );
@@ -474,7 +483,7 @@ function testPage() {
             "Testing PUT...";
 
           message.textContent =
-            await testFetchMethod("PUT");
+            await testMethod("PUT");
 
         }
       );
@@ -490,7 +499,7 @@ function testPage() {
             "Testing PATCH...";
 
           message.textContent =
-            await testFetchMethod("PATCH");
+            await testMethod("PATCH");
 
         }
       );
@@ -506,7 +515,7 @@ function testPage() {
             "Testing DELETE...";
 
           message.textContent =
-            await testFetchMethod("DELETE");
+            await testMethod("DELETE");
 
         }
       );
@@ -523,16 +532,16 @@ function testPage() {
 
 
           const post =
-            await testFetchMethod("POST");
+            await testMethod("POST");
 
           const put =
-            await testFetchMethod("PUT");
+            await testMethod("PUT");
 
           const patch =
-            await testFetchMethod("PATCH");
+            await testMethod("PATCH");
 
           const del =
-            await testFetchMethod("DELETE");
+            await testMethod("DELETE");
 
 
           message.textContent =
@@ -581,7 +590,9 @@ function rewriteHtml(html, baseUrl) {
   }
 
 
-  // Links
+  // ==================================
+  // LINKS
+  // ==================================
 
   html = html.replace(
     /(<a\\b[^>]*?\\bhref\\s*=\\s*["'])([^"']+)(["'])/gi,
@@ -590,7 +601,11 @@ function rewriteHtml(html, baseUrl) {
       try {
 
         const absolute =
-          new URL(url, baseUrl).href;
+          new URL(
+            url,
+            baseUrl
+          ).href;
+
 
         if (
           !absolute.startsWith("http://") &&
@@ -599,6 +614,7 @@ function rewriteHtml(html, baseUrl) {
           return match;
         }
 
+
         return (
           start +
           proxyUrl(absolute) +
@@ -610,11 +626,14 @@ function rewriteHtml(html, baseUrl) {
         return match;
 
       }
+
     }
   );
 
 
-  // Images
+  // ==================================
+  // IMAGES
+  // ==================================
 
   html = html.replace(
     /(<img\\b[^>]*?\\bsrc\\s*=\\s*["'])([^"']+)(["'])/gi,
@@ -623,7 +642,11 @@ function rewriteHtml(html, baseUrl) {
       try {
 
         const absolute =
-          new URL(url, baseUrl).href;
+          new URL(
+            url,
+            baseUrl
+          ).href;
+
 
         return (
           start +
@@ -636,11 +659,14 @@ function rewriteHtml(html, baseUrl) {
         return match;
 
       }
+
     }
   );
 
 
-  // Stylesheets
+  // ==================================
+  // STYLESHEETS
+  // ==================================
 
   html = html.replace(
     /(<link\\b[^>]*?\\bhref\\s*=\\s*["'])([^"']+)(["'])/gi,
@@ -649,7 +675,11 @@ function rewriteHtml(html, baseUrl) {
       try {
 
         const absolute =
-          new URL(url, baseUrl).href;
+          new URL(
+            url,
+            baseUrl
+          ).href;
+
 
         return (
           start +
@@ -662,11 +692,14 @@ function rewriteHtml(html, baseUrl) {
         return match;
 
       }
+
     }
   );
 
 
-  // External scripts
+  // ==================================
+  // SCRIPTS
+  // ==================================
 
   html = html.replace(
     /(<script\\b[^>]*?\\bsrc\\s*=\\s*["'])([^"']+)(["'])/gi,
@@ -675,7 +708,11 @@ function rewriteHtml(html, baseUrl) {
       try {
 
         const absolute =
-          new URL(url, baseUrl).href;
+          new URL(
+            url,
+            baseUrl
+          ).href;
+
 
         return (
           start +
@@ -688,6 +725,7 @@ function rewriteHtml(html, baseUrl) {
         return match;
 
       }
+
     }
   );
 
@@ -726,6 +764,7 @@ function rewriteCss(css, baseUrl) {
             baseUrl
           ).href;
 
+
         return (
           'url("' +
           proxyUrl(absolute) +
@@ -737,6 +776,7 @@ function rewriteCss(css, baseUrl) {
         return match;
 
       }
+
     }
   );
 }
@@ -781,9 +821,12 @@ const server =
       // OPTIONS
       // ==================================
 
-      if (req.method === "OPTIONS") {
+      if (
+        req.method === "OPTIONS"
+      ) {
 
         res.writeHead(204);
+
         res.end();
 
         return;
@@ -808,9 +851,11 @@ const server =
           }
         );
 
+
         res.end(
           "BetterProxy backend is running!"
         );
+
 
         return;
 
@@ -818,7 +863,7 @@ const server =
 
 
       // ==================================
-      // METHOD TEST PAGE
+      // TEST PAGE
       // ==================================
 
       if (
@@ -834,9 +879,11 @@ const server =
           }
         );
 
+
         res.end(
           testPage()
         );
+
 
         return;
 
@@ -859,9 +906,11 @@ const server =
           }
         );
 
+
         res.end(
           "Not found"
         );
+
 
         return;
 
@@ -892,9 +941,11 @@ const server =
           }
         );
 
+
         res.end(
           "Invalid encoded URL"
         );
+
 
         return;
 
@@ -908,7 +959,7 @@ const server =
 
 
       // ==================================
-      // PARSE URL
+      // PARSE TARGET
       // ==================================
 
       let targetURL;
@@ -928,9 +979,11 @@ const server =
           }
         );
 
+
         res.end(
           "Invalid target URL"
         );
+
 
         return;
 
@@ -952,6 +1005,7 @@ const server =
           targetURL.hostname
         );
 
+
         res.writeHead(
           403,
           {
@@ -960,9 +1014,11 @@ const server =
           }
         );
 
+
         res.end(
           "This site is not enabled yet."
         );
+
 
         return;
 
@@ -974,6 +1030,7 @@ const server =
       // ==================================
 
       let requestBody = null;
+
 
       if (
         req.method !== "GET" &&
@@ -987,7 +1044,7 @@ const server =
 
 
       // ==================================
-      // FORWARD REQUEST
+      // FETCH UPSTREAM
       // ==================================
 
       try {
@@ -1036,7 +1093,7 @@ const server =
 
 
         // ==================================
-        // REDIRECTS
+        // REDIRECT
         // ==================================
 
         if (
@@ -1066,83 +1123,65 @@ const server =
           }
 
 
-          try {
-
-            const redirectTarget =
-              new URL(
-                location,
-                targetURL.href
-              ).href;
+          const redirectTarget =
+            new URL(
+              location,
+              targetURL.href
+            ).href;
 
 
-            const redirectURL =
-              new URL(
-                redirectTarget
-              );
-
-
-            if (
-              !allowedHosts.includes(
-                redirectURL.hostname
-              )
-            ) {
-
-              res.writeHead(
-                403,
-                {
-                  "Content-Type":
-                    "text/plain; charset=utf-8"
-                }
-              );
-
-              res.end(
-                "Redirect target is not enabled."
-              );
-
-              return;
-
-            }
-
-
-            res.writeHead(
-              response.status,
-              {
-                Location:
-                  proxyUrl(
-                    redirectTarget
-                  )
-              }
-            );
-
-
-            res.end();
-
-
-            console.log(
-              "Proxy redirect:",
+          const redirectURL =
+            new URL(
               redirectTarget
             );
 
 
-            return;
-
-          } catch {
+          if (
+            !allowedHosts.includes(
+              redirectURL.hostname
+            )
+          ) {
 
             res.writeHead(
-              502,
+              403,
               {
                 "Content-Type":
                   "text/plain; charset=utf-8"
               }
             );
 
+
             res.end(
-              "Invalid redirect"
+              "Redirect target is not enabled."
             );
+
 
             return;
 
           }
+
+
+          res.writeHead(
+            response.status,
+            {
+              Location:
+                proxyUrl(
+                  redirectTarget
+                )
+            }
+          );
+
+
+          res.end();
+
+
+          console.log(
+            "Proxy redirect:",
+            redirectTarget
+          );
+
+
+          return;
 
         }
 
@@ -1152,9 +1191,7 @@ const server =
         // ==================================
 
         if (
-          contentType.includes(
-            "text/html"
-          )
+          contentType.includes("text/html")
         ) {
 
           let body =
@@ -1189,9 +1226,7 @@ const server =
         // ==================================
 
         if (
-          contentType.includes(
-            "text/css"
-          ) ||
+          contentType.includes("text/css") ||
           targetURL.pathname.endsWith(".css")
         ) {
 
@@ -1243,6 +1278,7 @@ const server =
 
         res.end(buffer);
 
+
       } catch (error) {
 
         console.error(
@@ -1261,7 +1297,8 @@ const server =
 
 
         res.end(
-          "Backend fetch failed"
+          "Backend fetch failed: " +
+          error.message
         );
 
       }
@@ -1271,7 +1308,7 @@ const server =
 
 
 // ====================================
-// START SERVER
+// START
 // ====================================
 
 server.listen(
