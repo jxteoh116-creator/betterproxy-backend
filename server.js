@@ -5,11 +5,6 @@ const PORT = process.env.PORT || 10000;
 const BACKEND_URL =
   "https://betterproxy-backend.onrender.com";
 
-
-// ====================================
-// Allowed test sites
-// ====================================
-
 const allowedHosts = [
   "example.com",
   "www.example.com",
@@ -21,7 +16,7 @@ const allowedHosts = [
 
 
 // ====================================
-// URL encoding
+// URL ENCODING
 // ====================================
 
 function encodeTarget(url) {
@@ -64,12 +59,81 @@ function proxyUrl(url) {
 
 
 // ====================================
-// Built-in API test page
+// FETCH INTERCEPTOR
+// ====================================
+
+function fetchInterceptor() {
+  return `
+<script>
+(function () {
+
+  const originalFetch = window.fetch;
+
+  const BACKEND =
+    "${BACKEND_URL}";
+
+  function encodeTarget(url) {
+    return btoa(url)
+      .replace(/\\+/g, "-")
+      .replace(/\\//g, "_")
+      .replace(/=+$/, "");
+  }
+
+  window.fetch = function(input, init) {
+
+    let url;
+
+    if (typeof input === "string") {
+      url = input;
+    } else if (input && input.url) {
+      url = input.url;
+    } else {
+      return originalFetch(input, init);
+    }
+
+    if (
+      url.startsWith("http://") ||
+      url.startsWith("https://")
+    ) {
+
+      const proxied =
+        BACKEND +
+        "/proxy/" +
+        encodeTarget(url);
+
+      console.log(
+        "BetterProxy fetch:",
+        url
+      );
+
+      return originalFetch(
+        proxied,
+        init
+      );
+    }
+
+    return originalFetch(
+      input,
+      init
+    );
+  };
+
+})();
+</script>
+`;
+}
+
+
+// ====================================
+// TEST PAGE
 // ====================================
 
 function testPage() {
-  const exampleProxyUrl =
-    proxyUrl("https://example.com/");
+
+  const exampleProxy =
+    proxyUrl(
+      "https://example.com/"
+    );
 
   return `<!DOCTYPE html>
 <html>
@@ -78,121 +142,130 @@ function testPage() {
   <meta charset="UTF-8">
 
   <title>
-    BetterProxy External Request Test
+    BetterProxy Phase 6C Test
   </title>
-
-  <style>
-    body {
-      font-family: sans-serif;
-      padding: 30px;
-    }
-
-    button {
-      padding: 10px 16px;
-      cursor: pointer;
-    }
-
-    #message {
-      margin: 20px 0;
-      white-space: pre-wrap;
-    }
-  </style>
 </head>
 
 <body>
 
   <h1>
-    BetterProxy External Request Test
+    BetterProxy Phase 6C
   </h1>
 
   <p id="message">
     Ready.
   </p>
 
-  <button id="testButton">
-    Test example.com
+  <button id="test">
+    Test proxied fetch
   </button>
-
 
   <script>
 
-    const message =
-      document.getElementById("message");
+    const originalFetch =
+      window.fetch;
 
-    const button =
-      document.getElementById("testButton");
+    const BACKEND =
+      "${BACKEND_URL}";
 
+    function encodeTarget(url) {
+      return btoa(url)
+        .replace(/\\+/g, "-")
+        .replace(/\\//g, "_")
+        .replace(/=+$/, "");
+    }
 
-    button.addEventListener(
-      "click",
-      async function() {
+    window.fetch =
+      function(input, init) {
 
-        message.textContent =
-          "Requesting example.com through BetterProxy...";
+        let url;
 
-
-        try {
-
-          const response =
-            await fetch(
-              ${JSON.stringify(exampleProxyUrl)}
-            );
-
-
-          if (!response.ok) {
-
-            throw new Error(
-              "HTTP " +
-              response.status
-            );
-
-          }
-
-
-          const text =
-            await response.text();
-
-
-          message.textContent =
-            "External request worked!\\n\\n" +
-            "Received " +
-            text.length +
-            " characters from example.com.";
-
-
-          console.log(
-            "Received response:",
-            text
-          );
-
-
-        } catch (error) {
-
-          console.error(
-            "External request failed:",
-            error
-          );
-
-
-          message.textContent =
-            "External request failed: " +
-            error.message;
-
+        if (typeof input === "string") {
+          url = input;
+        } else {
+          url = input.url;
         }
 
-      }
-    );
+        if (
+          url.startsWith("http://") ||
+          url.startsWith("https://")
+        ) {
+
+          const proxied =
+            BACKEND +
+            "/proxy/" +
+            encodeTarget(url);
+
+          return originalFetch(
+            proxied,
+            init
+          );
+        }
+
+        return originalFetch(
+          input,
+          init
+        );
+      };
+
+
+    document
+      .getElementById("test")
+      .addEventListener(
+        "click",
+        async function() {
+
+          const message =
+            document.getElementById(
+              "message"
+            );
+
+          message.textContent =
+            "Testing...";
+
+          try {
+
+            const response =
+              await fetch(
+                "https://example.com/"
+              );
+
+            if (!response.ok) {
+              throw new Error(
+                "HTTP " +
+                response.status
+              );
+            }
+
+            const text =
+              await response.text();
+
+            message.textContent =
+              "Success! Received " +
+              text.length +
+              " characters.";
+
+          } catch (error) {
+
+            console.error(error);
+
+            message.textContent =
+              "Failed: " +
+              error.message;
+          }
+
+        }
+      );
 
   </script>
 
 </body>
-
 </html>`;
 }
 
 
 // ====================================
-// HTML rewriting
+// HTML REWRITING
 // ====================================
 
 function rewriteHtml(
@@ -200,9 +273,40 @@ function rewriteHtml(
   baseUrl
 ) {
 
+  // Inject fetch interceptor
+  // before the page's scripts.
+
+  const interceptor =
+    fetchInterceptor();
+
+
+  if (
+    /<head\b[^>]*>/i.test(html)
+  ) {
+
+    html =
+      html.replace(
+        /<head\b[^>]*>/i,
+        match =>
+          match +
+          interceptor
+      );
+
+  } else {
+
+    html =
+      interceptor +
+      html;
+
+  }
+
+
+  // -------------------------------
   // Links
+  // -------------------------------
+
   html = html.replace(
-    /(<a\\b[^>]*?\\bhref\\s*=\\s*["'])([^"']+)(["'])/gi,
+    /(<a\b[^>]*?\bhref\s*=\s*["'])([^"']+)(["'])/gi,
 
     (
       match,
@@ -219,15 +323,17 @@ function rewriteHtml(
             baseUrl
           ).href;
 
-
         if (
-          !absolute.startsWith("http://") &&
-          !absolute.startsWith("https://")
+          !absolute.startsWith(
+            "http://"
+          ) &&
+          !absolute.startsWith(
+            "https://"
+          )
         ) {
           return match;
         }
 
-
         return (
           start +
           proxyUrl(absolute) +
@@ -237,16 +343,17 @@ function rewriteHtml(
       } catch {
 
         return match;
-
       }
-
     }
   );
 
 
+  // -------------------------------
   // Images
+  // -------------------------------
+
   html = html.replace(
-    /(<img\\b[^>]*?\\bsrc\\s*=\\s*["'])([^"']+)(["'])/gi,
+    /(<img\b[^>]*?\bsrc\s*=\s*["'])([^"']+)(["'])/gi,
 
     (
       match,
@@ -263,7 +370,6 @@ function rewriteHtml(
             baseUrl
           ).href;
 
-
         return (
           start +
           proxyUrl(absolute) +
@@ -273,16 +379,17 @@ function rewriteHtml(
       } catch {
 
         return match;
-
       }
-
     }
   );
 
 
+  // -------------------------------
   // Stylesheets
+  // -------------------------------
+
   html = html.replace(
-    /(<link\\b[^>]*?\\bhref\\s*=\\s*["'])([^"']+)(["'])/gi,
+    /(<link\b[^>]*?\bhref\s*=\s*["'])([^"']+)(["'])/gi,
 
     (
       match,
@@ -299,7 +406,6 @@ function rewriteHtml(
             baseUrl
           ).href;
 
-
         return (
           start +
           proxyUrl(absolute) +
@@ -309,16 +415,17 @@ function rewriteHtml(
       } catch {
 
         return match;
-
       }
-
     }
   );
 
 
+  // -------------------------------
   // External JavaScript
+  // -------------------------------
+
   html = html.replace(
-    /(<script\\b[^>]*?\\bsrc\\s*=\\s*["'])([^"']+)(["'])/gi,
+    /(<script\b[^>]*?\bsrc\s*=\s*["'])([^"']+)(["'])/gi,
 
     (
       match,
@@ -335,7 +442,6 @@ function rewriteHtml(
             baseUrl
           ).href;
 
-
         return (
           start +
           proxyUrl(absolute) +
@@ -345,9 +451,7 @@ function rewriteHtml(
       } catch {
 
         return match;
-
       }
-
     }
   );
 
@@ -357,7 +461,7 @@ function rewriteHtml(
 
 
 // ====================================
-// CSS rewriting
+// CSS REWRITING
 // ====================================
 
 function rewriteCss(
@@ -377,14 +481,12 @@ function rewriteCss(
       const trimmed =
         url.trim();
 
-
       if (
         trimmed.startsWith("data:") ||
         trimmed.startsWith("blob:")
       ) {
         return match;
       }
-
 
       try {
 
@@ -394,7 +496,6 @@ function rewriteCss(
             baseUrl
           ).href;
 
-
         return (
           `url("${proxyUrl(absolute)}")`
         );
@@ -402,16 +503,14 @@ function rewriteCss(
       } catch {
 
         return match;
-
       }
-
     }
   );
 }
 
 
 // ====================================
-// Server
+// SERVER
 // ====================================
 
 const server =
@@ -424,9 +523,9 @@ const server =
       );
 
 
-      // --------------------------------
+      // -------------------------------
       // CORS
-      // --------------------------------
+      // -------------------------------
 
       res.setHeader(
         "Access-Control-Allow-Origin",
@@ -434,9 +533,9 @@ const server =
       );
 
 
-      // --------------------------------
+      // -------------------------------
       // OPTIONS
-      // --------------------------------
+      // -------------------------------
 
       if (
         req.method === "OPTIONS"
@@ -462,9 +561,9 @@ const server =
       }
 
 
-      // --------------------------------
+      // -------------------------------
       // Homepage
-      // --------------------------------
+      // -------------------------------
 
       if (
         req.url === "/"
@@ -486,9 +585,9 @@ const server =
       }
 
 
-      // --------------------------------
+      // -------------------------------
       // Backend test
-      // --------------------------------
+      // -------------------------------
 
       if (
         req.url === "/proxy/test"
@@ -510,9 +609,9 @@ const server =
       }
 
 
-      // --------------------------------
-      // External request test page
-      // --------------------------------
+      // -------------------------------
+      // Phase 6C test
+      // -------------------------------
 
       if (
         req.url === "/test"
@@ -534,12 +633,14 @@ const server =
       }
 
 
-      // --------------------------------
+      // -------------------------------
       // Proxy route
-      // --------------------------------
+      // -------------------------------
 
       if (
-        !req.url.startsWith("/proxy/")
+        !req.url.startsWith(
+          "/proxy/"
+        )
       ) {
 
         res.writeHead(
@@ -558,15 +659,14 @@ const server =
       }
 
 
-      // --------------------------------
-      // Decode target
-      // --------------------------------
+      // -------------------------------
+      // Decode URL
+      // -------------------------------
 
       const encoded =
         req.url.slice(
           "/proxy/".length
         );
-
 
       const target =
         decodeTarget(
@@ -598,16 +698,18 @@ const server =
       );
 
 
-      // --------------------------------
-      // Parse target URL
-      // --------------------------------
+      // -------------------------------
+      // Parse target
+      // -------------------------------
 
       let targetURL;
 
       try {
 
         targetURL =
-          new URL(target);
+          new URL(
+            target
+          );
 
       } catch {
 
@@ -627,9 +729,9 @@ const server =
       }
 
 
-      // --------------------------------
+      // -------------------------------
       // Allowlist
-      // --------------------------------
+      // -------------------------------
 
       if (
         !allowedHosts.includes(
@@ -641,7 +743,6 @@ const server =
           "Blocked host:",
           targetURL.hostname
         );
-
 
         res.writeHead(
           403,
@@ -659,9 +760,9 @@ const server =
       }
 
 
-      // --------------------------------
+      // -------------------------------
       // Fetch target
-      // --------------------------------
+      // -------------------------------
 
       try {
 
@@ -669,7 +770,8 @@ const server =
           await fetch(
             targetURL.href,
             {
-              redirect: "manual",
+              redirect:
+                "manual",
 
               headers: {
                 "User-Agent":
@@ -693,9 +795,9 @@ const server =
         );
 
 
-        // --------------------------------
+        // -----------------------------
         // Redirects
-        // --------------------------------
+        // -----------------------------
 
         if (
           response.status === 301 ||
@@ -770,7 +872,6 @@ const server =
               }
             );
 
-
             res.end();
 
 
@@ -778,7 +879,6 @@ const server =
               "Proxy redirect:",
               redirectTarget
             );
-
 
             return;
 
@@ -801,9 +901,9 @@ const server =
         }
 
 
-        // --------------------------------
+        // -----------------------------
         // HTML
-        // --------------------------------
+        // -----------------------------
 
         if (
           contentType.includes(
@@ -839,9 +939,9 @@ const server =
         }
 
 
-        // --------------------------------
+        // -----------------------------
         // CSS
-        // --------------------------------
+        // -----------------------------
 
         if (
           contentType.includes(
@@ -880,9 +980,9 @@ const server =
         }
 
 
-        // --------------------------------
+        // -----------------------------
         // Other resources
-        // --------------------------------
+        // -----------------------------
 
         const buffer =
           Buffer.from(
@@ -920,7 +1020,6 @@ const server =
           }
         );
 
-
         res.end(
           "Backend fetch failed"
         );
@@ -930,7 +1029,7 @@ const server =
 
 
 // ====================================
-// Start server
+// START
 // ====================================
 
 server.listen(
