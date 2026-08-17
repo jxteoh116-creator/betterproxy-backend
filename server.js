@@ -17,7 +17,6 @@ const allowedHosts = [
   "www.iana.org",
   "postman-echo.com",
   "www.postman-echo.com",
-  "https://bloxd.io"'
 ];
 
 
