@@ -3,7 +3,6 @@ const http = require("http");
 const PORT = process.env.PORT || 10000;
 const BACKEND_URL = "https://betterproxy-backend.onrender.com";
 
-
 // ====================================
 // ALLOWED HOSTS
 // ====================================
@@ -14,9 +13,7 @@ const allowedHosts = [
   "example.org",
   "www.example.org",
   "iana.org",
-  "www.iana.org",
-  "postman-echo.com",
-  "www.postman-echo.com",
+  "www.iana.org"
 ];
 
 
@@ -121,19 +118,30 @@ function requestInterceptor(baseUrl) {
 
 
   function encodeTarget(url) {
+
     return btoa(url)
       .replace(/\\+/g, "-")
       .replace(/\\//g, "_")
       .replace(/=+$/, "");
+
   }
 
 
   function resolveTarget(input) {
+
     try {
-      return new URL(input, BASE_URL).href;
+
+      return new URL(
+        input,
+        BASE_URL
+      ).href;
+
     } catch {
+
       return null;
+
     }
+
   }
 
 
@@ -141,48 +149,85 @@ function requestInterceptor(baseUrl) {
   // FETCH INTERCEPTOR
   // ==================================
 
-  const originalFetch = window.fetch;
+  const originalFetch =
+    window.fetch;
 
-  window.fetch = function(input, init) {
 
-    let originalUrl;
+  window.fetch =
+    function(input, init) {
 
-    if (typeof input === "string") {
-      originalUrl = input;
-    } else if (input && input.url) {
-      originalUrl = input.url;
-    } else {
-      return originalFetch(input, init);
-    }
+      let originalUrl;
 
-    const absoluteUrl = resolveTarget(originalUrl);
 
-    if (!absoluteUrl) {
-      return originalFetch(input, init);
-    }
+      if (typeof input === "string") {
 
-    if (
-      absoluteUrl.startsWith("http://") ||
-      absoluteUrl.startsWith("https://")
-    ) {
+        originalUrl = input;
 
-      const proxied =
-        BACKEND +
-        "/proxy/" +
-        encodeTarget(absoluteUrl);
+      } else if (input && input.url) {
 
-      console.log(
-        "BetterProxy fetch:",
-        originalUrl,
-        "=>",
-        absoluteUrl
+        originalUrl = input.url;
+
+      } else {
+
+        return originalFetch(
+          input,
+          init
+        );
+
+      }
+
+
+      const absoluteUrl =
+        resolveTarget(
+          originalUrl
+        );
+
+
+      if (!absoluteUrl) {
+
+        return originalFetch(
+          input,
+          init
+        );
+
+      }
+
+
+      if (
+        absoluteUrl.startsWith("http://") ||
+        absoluteUrl.startsWith("https://")
+      ) {
+
+        const proxied =
+          BACKEND +
+          "/proxy/" +
+          encodeTarget(
+            absoluteUrl
+          );
+
+
+        console.log(
+          "BetterProxy fetch:",
+          originalUrl,
+          "=>",
+          absoluteUrl
+        );
+
+
+        return originalFetch(
+          proxied,
+          init
+        );
+
+      }
+
+
+      return originalFetch(
+        input,
+        init
       );
 
-      return originalFetch(proxied, init);
-    }
-
-    return originalFetch(input, init);
-  };
+    };
 
 
   // ==================================
@@ -192,11 +237,19 @@ function requestInterceptor(baseUrl) {
   const originalOpen =
     XMLHttpRequest.prototype.open;
 
+
   XMLHttpRequest.prototype.open =
-    function(method, url, async, user, password) {
+    function(
+      method,
+      url,
+      async,
+      user,
+      password
+    ) {
 
       const absoluteUrl =
         resolveTarget(url);
+
 
       if (
         absoluteUrl &&
@@ -213,10 +266,14 @@ function requestInterceptor(baseUrl) {
           absoluteUrl
         );
 
+
         const proxied =
           BACKEND +
           "/proxy/" +
-          encodeTarget(absoluteUrl);
+          encodeTarget(
+            absoluteUrl
+          );
+
 
         return originalOpen.call(
           this,
@@ -226,7 +283,9 @@ function requestInterceptor(baseUrl) {
           user,
           password
         );
+
       }
+
 
       return originalOpen.call(
         this,
@@ -236,6 +295,7 @@ function requestInterceptor(baseUrl) {
         user,
         password
       );
+
     };
 
 
@@ -256,7 +316,7 @@ function requestInterceptor(baseUrl) {
 function testPage() {
 
   const simulatedOrigin =
-    "https://postman-echo.com/";
+    "https://example.com/";
 
 
   return `<!DOCTYPE html>
@@ -266,7 +326,7 @@ function testPage() {
 
   <meta charset="UTF-8">
 
-  <base href="https://postman-echo.com/">
+  <base href="https://example.com/">
 
   <title>
     BetterProxy Method Test
@@ -304,9 +364,11 @@ function testPage() {
     BetterProxy Method Test
   </h1>
 
+
   <p>
-    These tests verify that BetterProxy preserves
-    HTTP methods and request bodies.
+    This test sends POST, PUT, PATCH and DELETE
+    through BetterProxy to the local method-test
+    endpoint.
   </p>
 
 
@@ -314,17 +376,21 @@ function testPage() {
     Test POST
   </button>
 
+
   <button id="putButton">
     Test PUT
   </button>
+
 
   <button id="patchButton">
     Test PATCH
   </button>
 
+
   <button id="deleteButton">
     Test DELETE
   </button>
+
 
   <button id="allButton">
     Test All
@@ -342,7 +408,23 @@ function testPage() {
   <script>
 
     const message =
-      document.getElementById("message");
+      document.getElementById(
+        "message"
+      );
+
+
+    // ==================================
+    // ENCODE TARGET
+    // ==================================
+
+    function encodeTarget(url) {
+
+      return btoa(url)
+        .replace(/\\+/g, "-")
+        .replace(/\\//g, "_")
+        .replace(/=+$/, "");
+
+    }
 
 
     // ==================================
@@ -352,6 +434,16 @@ function testPage() {
     async function testMethod(method) {
 
       try {
+
+        const target =
+          "https://example.com/method-test";
+
+
+        const proxied =
+          ${JSON.stringify(BACKEND_URL)} +
+          "/proxy/" +
+          encodeTarget(target);
+
 
         const options = {
           method: method,
@@ -376,7 +468,7 @@ function testPage() {
 
         const response =
           await fetch(
-            "/anything",
+            proxied,
             options
           );
 
@@ -398,38 +490,20 @@ function testPage() {
         }
 
 
-        let data = null;
+        let data;
 
         try {
-          data = JSON.parse(text);
+
+          data =
+            JSON.parse(text);
+
         } catch {
-          data = null;
-        }
 
-
-        if (data) {
-
-          let result =
+          return (
             method +
-            " → SUCCESS\\n";
-
-
-          if (data.method) {
-            result +=
-              "Server saw method: " +
-              data.method +
-              "\\n";
-          }
-
-
-          if (data.json) {
-            result +=
-              "Server saw JSON body: " +
-              JSON.stringify(data.json);
-          }
-
-
-          return result;
+            " → SUCCESS\\n" +
+            text
+          );
 
         }
 
@@ -437,8 +511,19 @@ function testPage() {
         return (
           method +
           " → SUCCESS\\n" +
-          text
+          "Backend received method: " +
+          data.method +
+          "\\n" +
+          "Backend received path: " +
+          data.path +
+          "\\n" +
+          "Backend received body: " +
+          (
+            data.body ||
+            "(none)"
+          )
         );
+
 
       } catch (error) {
 
@@ -466,8 +551,11 @@ function testPage() {
           message.textContent =
             "Testing POST...";
 
+
           message.textContent =
-            await testMethod("POST");
+            await testMethod(
+              "POST"
+            );
 
         }
       );
@@ -482,8 +570,11 @@ function testPage() {
           message.textContent =
             "Testing PUT...";
 
+
           message.textContent =
-            await testMethod("PUT");
+            await testMethod(
+              "PUT"
+            );
 
         }
       );
@@ -498,8 +589,11 @@ function testPage() {
           message.textContent =
             "Testing PATCH...";
 
+
           message.textContent =
-            await testMethod("PATCH");
+            await testMethod(
+              "PATCH"
+            );
 
         }
       );
@@ -514,8 +608,11 @@ function testPage() {
           message.textContent =
             "Testing DELETE...";
 
+
           message.textContent =
-            await testMethod("DELETE");
+            await testMethod(
+              "DELETE"
+            );
 
         }
       );
@@ -532,16 +629,27 @@ function testPage() {
 
 
           const post =
-            await testMethod("POST");
+            await testMethod(
+              "POST"
+            );
+
 
           const put =
-            await testMethod("PUT");
+            await testMethod(
+              "PUT"
+            );
+
 
           const patch =
-            await testMethod("PATCH");
+            await testMethod(
+              "PATCH"
+            );
+
 
           const del =
-            await testMethod("DELETE");
+            await testMethod(
+              "DELETE"
+            );
 
 
           message.textContent =
@@ -568,24 +676,34 @@ function testPage() {
 // HTML REWRITING
 // ====================================
 
-function rewriteHtml(html, baseUrl) {
+function rewriteHtml(
+  html,
+  baseUrl
+) {
 
   const interceptor =
-    requestInterceptor(baseUrl);
+    requestInterceptor(
+      baseUrl
+    );
 
 
-  if (/<head\\b[^>]*>/i.test(html)) {
+  if (
+    /<head\\b[^>]*>/i.test(html)
+  ) {
 
     html =
       html.replace(
         /<head\\b[^>]*>/i,
-        match => match + interceptor
+        match =>
+          match +
+          interceptor
       );
 
   } else {
 
     html =
-      interceptor + html;
+      interceptor +
+      html;
 
   }
 
@@ -594,140 +712,178 @@ function rewriteHtml(html, baseUrl) {
   // LINKS
   // ==================================
 
-  html = html.replace(
-    /(<a\\b[^>]*?\\bhref\\s*=\\s*["'])([^"']+)(["'])/gi,
-    (match, start, url, end) => {
+  html =
+    html.replace(
+      /(<a\\b[^>]*?\\bhref\\s*=\\s*["'])([^"']+)(["'])/gi,
+      (
+        match,
+        start,
+        url,
+        end
+      ) => {
 
-      try {
+        try {
 
-        const absolute =
-          new URL(
-            url,
-            baseUrl
-          ).href;
+          const absolute =
+            new URL(
+              url,
+              baseUrl
+            ).href;
 
 
-        if (
-          !absolute.startsWith("http://") &&
-          !absolute.startsWith("https://")
-        ) {
+          if (
+            !absolute.startsWith(
+              "http://"
+            ) &&
+            !absolute.startsWith(
+              "https://"
+            )
+          ) {
+
+            return match;
+
+          }
+
+
+          return (
+            start +
+            proxyUrl(
+              absolute
+            ) +
+            end
+          );
+
+        } catch {
+
           return match;
+
         }
 
-
-        return (
-          start +
-          proxyUrl(absolute) +
-          end
-        );
-
-      } catch {
-
-        return match;
-
       }
-
-    }
-  );
+    );
 
 
   // ==================================
   // IMAGES
   // ==================================
 
-  html = html.replace(
-    /(<img\\b[^>]*?\\bsrc\\s*=\\s*["'])([^"']+)(["'])/gi,
-    (match, start, url, end) => {
+  html =
+    html.replace(
+      /(<img\\b[^>]*?\\bsrc\\s*=\\s*["'])([^"']+)(["'])/gi,
+      (
+        match,
+        start,
+        url,
+        end
+      ) => {
 
-      try {
+        try {
 
-        const absolute =
-          new URL(
-            url,
-            baseUrl
-          ).href;
+          const absolute =
+            new URL(
+              url,
+              baseUrl
+            ).href;
 
 
-        return (
-          start +
-          proxyUrl(absolute) +
-          end
-        );
+          return (
+            start +
+            proxyUrl(
+              absolute
+            ) +
+            end
+          );
 
-      } catch {
+        } catch {
 
-        return match;
+          return match;
+
+        }
 
       }
-
-    }
-  );
+    );
 
 
   // ==================================
   // STYLESHEETS
   // ==================================
 
-  html = html.replace(
-    /(<link\\b[^>]*?\\bhref\\s*=\\s*["'])([^"']+)(["'])/gi,
-    (match, start, url, end) => {
+  html =
+    html.replace(
+      /(<link\\b[^>]*?\\bhref\\s*=\\s*["'])([^"']+)(["'])/gi,
+      (
+        match,
+        start,
+        url,
+        end
+      ) => {
 
-      try {
+        try {
 
-        const absolute =
-          new URL(
-            url,
-            baseUrl
-          ).href;
+          const absolute =
+            new URL(
+              url,
+              baseUrl
+            ).href;
 
 
-        return (
-          start +
-          proxyUrl(absolute) +
-          end
-        );
+          return (
+            start +
+            proxyUrl(
+              absolute
+            ) +
+            end
+          );
 
-      } catch {
+        } catch {
 
-        return match;
+          return match;
+
+        }
 
       }
-
-    }
-  );
+    );
 
 
   // ==================================
   // SCRIPTS
   // ==================================
 
-  html = html.replace(
-    /(<script\\b[^>]*?\\bsrc\\s*=\\s*["'])([^"']+)(["'])/gi,
-    (match, start, url, end) => {
+  html =
+    html.replace(
+      /(<script\\b[^>]*?\\bsrc\\s*=\\s*["'])([^"']+)(["'])/gi,
+      (
+        match,
+        start,
+        url,
+        end
+      ) => {
 
-      try {
+        try {
 
-        const absolute =
-          new URL(
-            url,
-            baseUrl
-          ).href;
+          const absolute =
+            new URL(
+              url,
+              baseUrl
+            ).href;
 
 
-        return (
-          start +
-          proxyUrl(absolute) +
-          end
-        );
+          return (
+            start +
+            proxyUrl(
+              absolute
+            ) +
+            end
+          );
 
-      } catch {
+        } catch {
 
-        return match;
+          return match;
+
+        }
 
       }
-
-    }
-  );
+    );
 
 
   return html;
@@ -738,21 +894,34 @@ function rewriteHtml(html, baseUrl) {
 // CSS REWRITING
 // ====================================
 
-function rewriteCss(css, baseUrl) {
+function rewriteCss(
+  css,
+  baseUrl
+) {
 
   return css.replace(
     /url\\(\\s*(['"]?)([^'")]+)\\1\\s*\\)/gi,
-    (match, quote, url) => {
+    (
+      match,
+      quote,
+      url
+    ) => {
 
       const trimmed =
         url.trim();
 
 
       if (
-        trimmed.startsWith("data:") ||
-        trimmed.startsWith("blob:")
+        trimmed.startsWith(
+          "data:"
+        ) ||
+        trimmed.startsWith(
+          "blob:"
+        )
       ) {
+
         return match;
+
       }
 
 
@@ -767,7 +936,9 @@ function rewriteCss(css, baseUrl) {
 
         return (
           'url("' +
-          proxyUrl(absolute) +
+          proxyUrl(
+            absolute
+          ) +
           '")'
         );
 
@@ -788,7 +959,10 @@ function rewriteCss(css, baseUrl) {
 
 const server =
   http.createServer(
-    async (req, res) => {
+    async (
+      req,
+      res
+    ) => {
 
       console.log(
         "Request:",
@@ -806,10 +980,12 @@ const server =
         "*"
       );
 
+
       res.setHeader(
         "Access-Control-Allow-Headers",
         "*"
       );
+
 
       res.setHeader(
         "Access-Control-Allow-Methods",
@@ -825,7 +1001,9 @@ const server =
         req.method === "OPTIONS"
       ) {
 
-        res.writeHead(204);
+        res.writeHead(
+          204
+        );
 
         res.end();
 
@@ -891,11 +1069,80 @@ const server =
 
 
       // ==================================
+      // LOCAL METHOD TEST ENDPOINT
+      // ==================================
+
+      if (
+        req.url === "/method-test"
+      ) {
+
+        let body =
+          Buffer.alloc(0);
+
+
+        if (
+          req.method !== "GET" &&
+          req.method !== "HEAD"
+        ) {
+
+          body =
+            await readRequestBody(
+              req
+            );
+
+        }
+
+
+        const bodyText =
+          body.length > 0
+            ? body.toString("utf8")
+            : "";
+
+
+        console.log(
+          "METHOD TEST RECEIVED:",
+          req.method,
+          bodyText
+        );
+
+
+        const result = {
+          success: true,
+          method: req.method,
+          path: req.url,
+          body: bodyText
+        };
+
+
+        res.writeHead(
+          200,
+          {
+            "Content-Type":
+              "application/json; charset=utf-8"
+          }
+        );
+
+
+        res.end(
+          JSON.stringify(
+            result
+          )
+        );
+
+
+        return;
+
+      }
+
+
+      // ==================================
       // PROXY ROUTE
       // ==================================
 
       if (
-        !req.url.startsWith("/proxy/")
+        !req.url.startsWith(
+          "/proxy/"
+        )
       ) {
 
         res.writeHead(
@@ -928,7 +1175,9 @@ const server =
 
 
       const target =
-        decodeTarget(encoded);
+        decodeTarget(
+          encoded
+        );
 
 
       if (!target) {
@@ -964,10 +1213,13 @@ const server =
 
       let targetURL;
 
+
       try {
 
         targetURL =
-          new URL(target);
+          new URL(
+            target
+          );
 
       } catch {
 
@@ -1029,7 +1281,8 @@ const server =
       // READ BODY
       // ==================================
 
-      let requestBody = null;
+      let requestBody =
+        null;
 
 
       if (
@@ -1038,25 +1291,34 @@ const server =
       ) {
 
         requestBody =
-          await readRequestBody(req);
+          await readRequestBody(
+            req
+          );
 
       }
 
 
       // ==================================
-      // FETCH UPSTREAM
+      // FORWARD REQUEST
       // ==================================
 
       try {
 
         const headers =
-          getForwardHeaders(req);
+          getForwardHeaders(
+            req
+          );
 
 
         const fetchOptions = {
-          method: req.method,
-          headers: headers,
-          redirect: "manual"
+          method:
+            req.method,
+
+          headers:
+            headers,
+
+          redirect:
+            "manual"
         };
 
 
@@ -1093,7 +1355,7 @@ const server =
 
 
         // ==================================
-        // REDIRECT
+        // REDIRECTS
         // ==================================
 
         if (
@@ -1191,7 +1453,9 @@ const server =
         // ==================================
 
         if (
-          contentType.includes("text/html")
+          contentType.includes(
+            "text/html"
+          )
         ) {
 
           let body =
@@ -1214,7 +1478,10 @@ const server =
           );
 
 
-          res.end(body);
+          res.end(
+            body
+          );
+
 
           return;
 
@@ -1226,8 +1493,12 @@ const server =
         // ==================================
 
         if (
-          contentType.includes("text/css") ||
-          targetURL.pathname.endsWith(".css")
+          contentType.includes(
+            "text/css"
+          ) ||
+          targetURL.pathname.endsWith(
+            ".css"
+          )
         ) {
 
           let body =
@@ -1250,7 +1521,10 @@ const server =
           );
 
 
-          res.end(body);
+          res.end(
+            body
+          );
+
 
           return;
 
@@ -1276,7 +1550,9 @@ const server =
         );
 
 
-        res.end(buffer);
+        res.end(
+          buffer
+        );
 
 
       } catch (error) {
@@ -1308,7 +1584,7 @@ const server =
 
 
 // ====================================
-// START
+// START SERVER
 // ====================================
 
 server.listen(
