@@ -193,6 +193,22 @@ function requestInterceptor(baseUrl) {
       }
 
 
+      // IMPORTANT:
+      // Do NOT proxy requests that are
+      // already going to our backend.
+
+      if (
+        absoluteUrl.startsWith(BACKEND)
+      ) {
+
+        return originalFetch(
+          input,
+          init
+        );
+
+      }
+
+
       if (
         absoluteUrl.startsWith("http://") ||
         absoluteUrl.startsWith("https://")
@@ -251,12 +267,43 @@ function requestInterceptor(baseUrl) {
         resolveTarget(url);
 
 
+      if (!absoluteUrl) {
+
+        return originalOpen.call(
+          this,
+          method,
+          url,
+          async,
+          user,
+          password
+        );
+
+      }
+
+
+      // IMPORTANT:
+      // Do NOT proxy requests that are
+      // already going to our backend.
+
       if (
-        absoluteUrl &&
-        (
-          absoluteUrl.startsWith("http://") ||
-          absoluteUrl.startsWith("https://")
-        )
+        absoluteUrl.startsWith(BACKEND)
+      ) {
+
+        return originalOpen.call(
+          this,
+          method,
+          url,
+          async,
+          user,
+          password
+        );
+
+      }
+
+
+      if (
+        absoluteUrl.startsWith("http://") ||
+        absoluteUrl.startsWith("https://")
       ) {
 
         console.log(
@@ -307,7 +354,6 @@ function requestInterceptor(baseUrl) {
 </script>
 `;
 }
-
 
 // ====================================
 // CONTROLLED METHOD TEST PAGE
