@@ -3,11 +3,81 @@ const http = require("http");
 const PORT = process.env.PORT || 10000;
 const BACKEND_URL = "https://betterproxy-backend.onrender.com";
 
-const allowedHosts = [
-  "example.com",
-  "www.example.com",
-  "iana.org",
-  "www.iana.org"
+const dns = require("dns").promises;
+const net = require("net");
+
+function isPrivateIPv4(ip) {
+  const parts = ip.split(".").map(Number);
+
+  if (parts.length !== 4 || parts.some(Number.isNaN)) {
+    return false;
+  }
+
+  const [a, b] = parts;
+
+  return (
+    a === 10 ||
+    a === 127 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254)
+  );
+}
+
+function isPrivateIPv6(ip) {
+  const value = ip.toLowerCase();
+
+  return (
+    value === "::1" ||
+    value.startsWith("fc") ||
+    value.startsWith("fd") ||
+    value.startsWith("fe80:")
+  );
+}
+
+async function isBlockedHost(hostname) {
+  const host = hostname.toLowerCase();
+
+  if (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host.endsWith(".local")
+  ) {
+    return true;
+  }
+
+  if (net.isIP(host) === 4) {
+    return isPrivateIPv4(host);
+  }
+
+  if (net.isIP(host) === 6) {
+    return isPrivateIPv6(host);
+  }
+
+  try {
+    const addresses =
+      await dns.lookup(host, {
+        all: true
+      });
+
+    return addresses.some(address => {
+
+      if (address.family === 4) {
+        return isPrivateIPv4(address.address);
+      }
+
+      if (address.family === 6) {
+        return isPrivateIPv6(address.address);
+      }
+
+      return true;
+
+    });
+
+  } catch {
+    return true;
+  }
+}
 ];
 
 function encodeTarget(url) {
@@ -491,28 +561,46 @@ const server = http.createServer(async (req, res) => {
   // HOST ALLOWLIST
   // ----------------------------------------------------------
 
-  if (
-    !allowedHosts.includes(
-      targetURL.hostname
-    )
-  ) {
+if (
+  targetURL.protocol !== "http:" &&
+  targetURL.protocol !== "https:"
+) {
 
-    console.log(
-      "Blocked host:",
-      targetURL.hostname
-    );
+  res.writeHead(400, {
+    "Content-Type":
+      "text/plain; charset=utf-8"
+  });
 
-    res.writeHead(403, {
-      "Content-Type":
-        "text/plain; charset=utf-8"
-    });
+  res.end(
+    "Only HTTP and HTTPS URLs are supported."
+  );
 
-    res.end(
-      "This site is not enabled yet."
-    );
+  return;
+}
 
-    return;
-  }
+
+if (
+  await isBlockedHost(
+    targetURL.hostname
+  )
+) {
+
+  console.log(
+    "Blocked private/internal host:",
+    targetURL.hostname
+  );
+
+  res.writeHead(403, {
+    "Content-Type":
+      "text/plain; charset=utf-8"
+  });
+
+  res.end(
+    "Private or internal destinations are blocked."
+  );
+
+  return;
+}
 
 
   // ----------------------------------------------------------
