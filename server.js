@@ -3,21 +3,12 @@ const http = require("http");
 const PORT = process.env.PORT || 10000;
 const BACKEND_URL = "https://betterproxy-backend.onrender.com";
 
-// ============================================================
-// HOSTS ALLOWED THROUGH THE EXTERNAL PROXY
-// ============================================================
-
 const allowedHosts = [
   "example.com",
   "www.example.com",
   "iana.org",
   "www.iana.org"
 ];
-
-
-// ============================================================
-// BASE64 URL ENCODING
-// ============================================================
 
 function encodeTarget(url) {
   return Buffer.from(url)
@@ -27,14 +18,13 @@ function encodeTarget(url) {
     .replace(/=+$/, "");
 }
 
-
 function decodeTarget(encoded) {
   try {
     let value = encoded
       .replace(/-/g, "+")
       .replace(/_/g, "/");
 
-    while (value.length % 4) {
+    while (value.length % 4 !== 0) {
       value += "=";
     }
 
@@ -44,17 +34,11 @@ function decodeTarget(encoded) {
   }
 }
 
-
 function proxyUrl(url) {
   return BACKEND_URL + "/proxy/" + encodeTarget(url);
 }
 
-
-// ============================================================
-// READ REQUEST BODY
-// ============================================================
-
-function readRequestBody(req) {
+function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
 
@@ -70,12 +54,7 @@ function readRequestBody(req) {
   });
 }
 
-
-// ============================================================
-// COPY REQUEST HEADERS
-// ============================================================
-
-function getForwardHeaders(req) {
+function forwardHeaders(req) {
   const headers = {};
 
   for (const [name, value] of Object.entries(req.headers)) {
@@ -94,237 +73,7 @@ function getForwardHeaders(req) {
     }
   }
 
-  if (!headers["user-agent"]) {
-    headers["user-agent"] = "BetterProxy/1.0";
-  }
-
   return headers;
-}
-
-
-// ============================================================
-// CLIENT-SIDE FETCH + XHR INTERCEPTOR
-// ============================================================
-
-function requestInterceptor(baseUrl) {
-  return `
-<script>
-(function () {
-
-  const BACKEND = ${JSON.stringify(BACKEND_URL)};
-  const BASE_URL = ${JSON.stringify(baseUrl)};
-
-
-  function encodeTarget(url) {
-
-    return btoa(url)
-      .replace(/\\\\+/g, "-")
-      .replace(/\\\\//g, "_")
-      .replace(/=+$/, "");
-
-  }
-
-
-  function resolveTarget(input) {
-
-    try {
-
-      return new URL(
-        input,
-        BASE_URL
-      ).href;
-
-    } catch {
-
-      return null;
-
-    }
-
-  }
-
-
-  // ==========================================================
-  // FETCH INTERCEPTOR
-  // ==========================================================
-
-  const originalFetch = window.fetch;
-
-
-  window.fetch = function(input, init) {
-
-    let originalUrl;
-
-
-    if (typeof input === "string") {
-
-      originalUrl = input;
-
-    } else if (input && input.url) {
-
-      originalUrl = input.url;
-
-    } else {
-
-      return originalFetch(input, init);
-
-    }
-
-
-    const absoluteUrl =
-      resolveTarget(originalUrl);
-
-
-    if (!absoluteUrl) {
-
-      return originalFetch(input, init);
-
-    }
-
-
-    // Never intercept our own backend.
-
-    if (
-      absoluteUrl === BACKEND ||
-      absoluteUrl.startsWith(BACKEND + "/")
-    ) {
-
-      return originalFetch(input, init);
-
-    }
-
-
-    if (
-      absoluteUrl.startsWith("http://") ||
-      absoluteUrl.startsWith("https://")
-    ) {
-
-      const proxied =
-        BACKEND +
-        "/proxy/" +
-        encodeTarget(absoluteUrl);
-
-
-      console.log(
-        "BetterProxy fetch:",
-        originalUrl,
-        "=>",
-        absoluteUrl
-      );
-
-
-      return originalFetch(proxied, init);
-
-    }
-
-
-    return originalFetch(input, init);
-
-  };
-
-
-  // ==========================================================
-  // XHR INTERCEPTOR
-  // ==========================================================
-
-  const originalOpen =
-    XMLHttpRequest.prototype.open;
-
-
-  XMLHttpRequest.prototype.open = function(
-    method,
-    url,
-    async,
-    user,
-    password
-  ) {
-
-    const absoluteUrl =
-      resolveTarget(url);
-
-
-    if (!absoluteUrl) {
-
-      return originalOpen.call(
-        this,
-        method,
-        url,
-        async,
-        user,
-        password
-      );
-
-    }
-
-
-    // Never intercept our own backend.
-
-    if (
-      absoluteUrl === BACKEND ||
-      absoluteUrl.startsWith(BACKEND + "/")
-    ) {
-
-      return originalOpen.call(
-        this,
-        method,
-        url,
-        async,
-        user,
-        password
-      );
-
-    }
-
-
-    if (
-      absoluteUrl.startsWith("http://") ||
-      absoluteUrl.startsWith("https://")
-    ) {
-
-      console.log(
-        "BetterProxy XHR:",
-        url,
-        "=>",
-        absoluteUrl
-      );
-
-
-      const proxied =
-        BACKEND +
-        "/proxy/" +
-        encodeTarget(absoluteUrl);
-
-
-      return originalOpen.call(
-        this,
-        method,
-        proxied,
-        async,
-        user,
-        password
-      );
-
-    }
-
-
-    return originalOpen.call(
-      this,
-      method,
-      url,
-      async,
-      user,
-      password
-    );
-
-  };
-
-
-  console.log(
-    "BetterProxy fetch + XHR interceptors installed"
-  );
-
-})();
-</script>
-`;
 }
 
 
@@ -333,101 +82,51 @@ function requestInterceptor(baseUrl) {
 // ============================================================
 
 function testPage() {
-
-  return `<!DOCTYPE html>
-
+  return `<!doctype html>
 <html>
-
 <head>
-
-<meta charset="UTF-8">
-
+<meta charset="utf-8">
 <title>BetterProxy Method Test</title>
 
 <style>
-
 body {
   font-family: sans-serif;
   padding: 30px;
-  line-height: 1.5;
 }
 
 button {
-  padding: 10px 16px;
+  padding: 10px 15px;
   margin: 5px;
-  cursor: pointer;
 }
 
-#message {
+pre {
   margin-top: 20px;
   padding: 15px;
   border: 1px solid #ccc;
   white-space: pre-wrap;
 }
-
-.success {
-  color: green;
-}
-
-.failure {
-  color: red;
-}
-
 </style>
-
 </head>
-
 
 <body>
 
 <h1>BetterProxy Method Test</h1>
 
-<p>
-This page tests the backend's internal method endpoint.
-The tests do NOT contact example.com or another external service.
-</p>
+<button onclick="runTest('POST')">POST</button>
+<button onclick="runTest('PUT')">PUT</button>
+<button onclick="runTest('PATCH')">PATCH</button>
+<button onclick="runTest('DELETE')">DELETE</button>
+<button onclick="runAll()">Test All</button>
 
-
-<button id="postButton">
-Test POST
-</button>
-
-<button id="putButton">
-Test PUT
-</button>
-
-<button id="patchButton">
-Test PATCH
-</button>
-
-<button id="deleteButton">
-Test DELETE
-</button>
-
-<button id="allButton">
-Test All
-</button>
-
-
-<div id="message">
-Ready.
-</div>
-
-
-${requestInterceptor("https://example.com/")}
-
+<pre id="result">Ready.</pre>
 
 <script>
 
-const message =
-  document.getElementById("message");
+async function runTest(method) {
 
+  const result = document.getElementById("result");
 
-// ==========================================================
-// RUN ONE INTERNAL TEST
-// ==========================================================
-
-async function testMethod(method) {
+  result.textContent = "Testing " + method + "...";
 
   try {
 
@@ -438,1053 +137,529 @@ async function testMethod(method) {
       }
     };
 
-
-    // POST / PUT / PATCH get a body.
-
     if (
       method === "POST" ||
       method === "PUT" ||
       method === "PATCH"
     ) {
 
-      options.body =
-        JSON.stringify({
-          test: "BetterProxy",
-          method: method,
-          message: "Internal method test"
-        });
+      options.body = JSON.stringify({
+        test: "BetterProxy",
+        method: method
+      });
 
     }
 
+    const response = await fetch(
+      "/method-test",
+      options
+    );
 
-    // IMPORTANT:
-    // This is a DIRECT backend request.
-    //
-    // It does NOT use /proxy/.
-    //
-    // Therefore it cannot accidentally become:
-    // example.com/method-test
+    const text = await response.text();
 
-    const response =
-      await fetch(
+    if (!response.ok) {
+
+      result.textContent =
+        method +
+        " → FAILED: HTTP " +
+        response.status +
+        "\\n\\n" +
+        text;
+
+      return false;
+    }
+
+    result.textContent =
+      method +
+      " → SUCCESS\\n\\n" +
+      text;
+
+    return true;
+
+  } catch (error) {
+
+    result.textContent =
+      method +
+      " → FAILED: " +
+      error.message;
+
+    return false;
+  }
+}
+
+
+async function runAll() {
+
+  const result =
+    document.getElementById("result");
+
+  result.textContent =
+    "Running all tests...";
+
+  const methods = [
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE"
+  ];
+
+  const output = [];
+
+  for (const method of methods) {
+
+    try {
+
+      const options = {
+        method: method,
+        headers: {
+          "Content-Type": "application/json"
+        }
+      };
+
+      if (
+        method === "POST" ||
+        method === "PUT" ||
+        method === "PATCH"
+      ) {
+
+        options.body = JSON.stringify({
+          test: "BetterProxy",
+          method: method
+        });
+
+      }
+
+      const response = await fetch(
         "/method-test",
         options
       );
 
+      const text = await response.text();
 
-    const text =
-      await response.text();
+      if (response.ok) {
 
+        output.push(
+          method +
+          " → SUCCESS\\n" +
+          text
+        );
 
-    if (!response.ok) {
+      } else {
 
-      return (
+        output.push(
+          method +
+          " → FAILED: HTTP " +
+          response.status +
+          "\\n" +
+          text
+        );
+
+      }
+
+    } catch (error) {
+
+      output.push(
         method +
-        " → FAILED: HTTP " +
-        response.status +
-        "\\n" +
-        text
+        " → FAILED: " +
+        error.message
       );
 
     }
-
-
-    let data;
-
-    try {
-
-      data =
-        JSON.parse(text);
-
-    } catch {
-
-      return (
-        method +
-        " → SUCCESS\\n" +
-        text
-      );
-
-    }
-
-
-    return (
-      method +
-      " → SUCCESS\\n" +
-      "Server received method: " +
-      data.method +
-      "\\n" +
-      "Server received path: " +
-      data.path +
-      "\\n" +
-      "Server received body: " +
-      (
-        data.body ||
-        "(none)"
-      )
-    );
-
-
-  } catch (error) {
-
-    return (
-      method +
-      " → FAILED\\n" +
-      error.message
-    );
-
   }
 
+  result.textContent =
+    output.join("\\n\\n");
+
 }
-
-
-// ==========================================================
-// INDIVIDUAL BUTTONS
-// ==========================================================
-
-document
-  .getElementById("postButton")
-  .addEventListener(
-    "click",
-    async function() {
-
-      message.textContent =
-        "Testing POST...";
-
-
-      message.textContent =
-        await testMethod("POST");
-
-    }
-  );
-
-
-document
-  .getElementById("putButton")
-  .addEventListener(
-    "click",
-    async function() {
-
-      message.textContent =
-        "Testing PUT...";
-
-
-      message.textContent =
-        await testMethod("PUT");
-
-    }
-  );
-
-
-document
-  .getElementById("patchButton")
-  .addEventListener(
-    "click",
-    async function() {
-
-      message.textContent =
-        "Testing PATCH...";
-
-
-      message.textContent =
-        await testMethod("PATCH");
-
-    }
-  );
-
-
-document
-  .getElementById("deleteButton")
-  .addEventListener(
-    "click",
-    async function() {
-
-      message.textContent =
-        "Testing DELETE...";
-
-
-      message.textContent =
-        await testMethod("DELETE");
-
-    }
-  );
-
-
-// ==========================================================
-// TEST ALL
-// ==========================================================
-
-document
-  .getElementById("allButton")
-  .addEventListener(
-    "click",
-    async function() {
-
-      message.textContent =
-        "Testing all methods...";
-
-
-      const results = [];
-
-
-      results.push(
-        await testMethod("POST")
-      );
-
-
-      results.push(
-        await testMethod("PUT")
-      );
-
-
-      results.push(
-        await testMethod("PATCH")
-      );
-
-
-      results.push(
-        await testMethod("DELETE")
-      );
-
-
-      message.textContent =
-        results.join("\\n\\n");
-
-    }
-  );
 
 </script>
 
 </body>
-
 </html>`;
 }
 
 
 // ============================================================
-// REWRITE HTML
+// SERVER
 // ============================================================
 
-function rewriteHtml(html, baseUrl) {
+const server = http.createServer(async (req, res) => {
 
-  const interceptor =
-    requestInterceptor(baseUrl);
+  console.log(
+    "Request:",
+    req.method,
+    req.url
+  );
 
 
-  if (/<head\\b[^>]*>/i.test(html)) {
+  // ----------------------------------------------------------
+  // CORS
+  // ----------------------------------------------------------
 
-    html =
-      html.replace(
-        /<head\\b[^>]*>/i,
-        match =>
-          match + interceptor
-      );
+  res.setHeader(
+    "Access-Control-Allow-Origin",
+    "*"
+  );
 
-  } else {
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "*"
+  );
 
-    html =
-      interceptor + html;
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS"
+  );
 
+
+  // ----------------------------------------------------------
+  // OPTIONS
+  // ----------------------------------------------------------
+
+  if (req.method === "OPTIONS") {
+
+    res.writeHead(204);
+    res.end();
+
+    return;
   }
 
 
   // ----------------------------------------------------------
-  // A HREF
+  // HOME
   // ----------------------------------------------------------
 
-  html =
-    html.replace(
-      /(<a\\b[^>]*?\\bhref\\s*=\\s*["'])([^"']+)(["'])/gi,
-      (
-        match,
-        start,
-        url,
-        end
-      ) => {
+  if (
+    req.method === "GET" &&
+    req.url === "/"
+  ) {
 
-        try {
+    res.writeHead(200, {
+      "Content-Type":
+        "text/plain; charset=utf-8"
+    });
 
-          const absolute =
-            new URL(
-              url,
-              baseUrl
-            ).href;
+    res.end(
+      "BetterProxy backend is running!"
+    );
 
-
-          if (
-            !absolute.startsWith("http://") &&
-            !absolute.startsWith("https://")
-          ) {
-
-            return match;
-
-          }
+    return;
+  }
 
 
-          return (
-            start +
-            proxyUrl(absolute) +
-            end
-          );
+  // ----------------------------------------------------------
+  // TEST PAGE
+  // ----------------------------------------------------------
 
-        } catch {
+  if (
+    req.method === "GET" &&
+    req.url === "/test"
+  ) {
 
-          return match;
+    res.writeHead(200, {
+      "Content-Type":
+        "text/html; charset=utf-8"
+    });
 
-        }
+    res.end(
+      testPage()
+    );
 
-      }
+    return;
+  }
+
+
+  // ----------------------------------------------------------
+  // INTERNAL METHOD TEST
+  // ----------------------------------------------------------
+
+  if (req.url === "/method-test") {
+
+    let body = "";
+
+    if (
+      req.method !== "GET" &&
+      req.method !== "HEAD"
+    ) {
+
+      const buffer =
+        await readBody(req);
+
+      body =
+        buffer.toString("utf8");
+    }
+
+
+    console.log(
+      "METHOD TEST:",
+      req.method,
+      body
     );
 
 
+    const result = {
+      success: true,
+      method: req.method,
+      path: req.url,
+      body: body
+    };
+
+
+    res.writeHead(200, {
+      "Content-Type":
+        "application/json; charset=utf-8"
+    });
+
+    res.end(
+      JSON.stringify(result, null, 2)
+    );
+
+    return;
+  }
+
+
   // ----------------------------------------------------------
-  // IMG SRC
+  // PROXY
   // ----------------------------------------------------------
 
-  html =
-    html.replace(
-      /(<img\\b[^>]*?\\bsrc\\s*=\\s*["'])([^"']+)(["'])/gi,
-      (
-        match,
-        start,
-        url,
-        end
-      ) => {
+  if (
+    !req.url.startsWith("/proxy/")
+  ) {
 
-        try {
+    res.writeHead(404, {
+      "Content-Type":
+        "text/plain; charset=utf-8"
+    });
 
-          const absolute =
-            new URL(
-              url,
-              baseUrl
-            ).href;
+    res.end("Not found");
+
+    return;
+  }
 
 
-          return (
-            start +
-            proxyUrl(absolute) +
-            end
-          );
+  const encoded =
+    req.url.substring("/proxy/".length);
 
-        } catch {
+  const target =
+    decodeTarget(encoded);
 
-          return match;
 
-        }
+  if (!target) {
 
-      }
+    res.writeHead(400, {
+      "Content-Type":
+        "text/plain; charset=utf-8"
+    });
+
+    res.end(
+      "Invalid encoded URL"
+    );
+
+    return;
+  }
+
+
+  console.log(
+    "Decoded target:",
+    target
+  );
+
+
+  let targetURL;
+
+  try {
+
+    targetURL =
+      new URL(target);
+
+  } catch {
+
+    res.writeHead(400, {
+      "Content-Type":
+        "text/plain; charset=utf-8"
+    });
+
+    res.end(
+      "Invalid target URL"
+    );
+
+    return;
+  }
+
+
+  // ----------------------------------------------------------
+  // HOST ALLOWLIST
+  // ----------------------------------------------------------
+
+  if (
+    !allowedHosts.includes(
+      targetURL.hostname
+    )
+  ) {
+
+    console.log(
+      "Blocked host:",
+      targetURL.hostname
+    );
+
+    res.writeHead(403, {
+      "Content-Type":
+        "text/plain; charset=utf-8"
+    });
+
+    res.end(
+      "This site is not enabled yet."
+    );
+
+    return;
+  }
+
+
+  // ----------------------------------------------------------
+  // BODY
+  // ----------------------------------------------------------
+
+  let body = null;
+
+  if (
+    req.method !== "GET" &&
+    req.method !== "HEAD"
+  ) {
+
+    body =
+      await readBody(req);
+  }
+
+
+  // ----------------------------------------------------------
+  // FORWARD
+  // ----------------------------------------------------------
+
+  try {
+
+    const options = {
+      method: req.method,
+      headers: forwardHeaders(req),
+      redirect: "manual"
+    };
+
+
+    if (
+      body &&
+      body.length > 0
+    ) {
+
+      options.body = body;
+    }
+
+
+    const response =
+      await fetch(
+        targetURL.href,
+        options
+      );
+
+
+    const contentType =
+      response.headers.get(
+        "content-type"
+      ) ||
+      "application/octet-stream";
+
+
+    console.log(
+      "Response:",
+      response.status,
+      contentType
     );
 
 
-  // ----------------------------------------------------------
-  // LINK HREF
-  // ----------------------------------------------------------
+    // --------------------------------------------------------
+    // REDIRECT
+    // --------------------------------------------------------
 
-  html =
-    html.replace(
-      /(<link\\b[^>]*?\\bhref\\s*=\\s*["'])([^"']+)(["'])/gi,
-      (
-        match,
-        start,
-        url,
-        end
-      ) => {
+    if (
+      response.status >= 300 &&
+      response.status < 400
+    ) {
 
-        try {
-
-          const absolute =
-            new URL(
-              url,
-              baseUrl
-            ).href;
+      const location =
+        response.headers.get(
+          "location"
+        );
 
 
-          return (
-            start +
-            proxyUrl(absolute) +
-            end
-          );
+      if (location) {
 
-        } catch {
-
-          return match;
-
-        }
-
-      }
-    );
-
-
-  // ----------------------------------------------------------
-  // SCRIPT SRC
-  // ----------------------------------------------------------
-
-  html =
-    html.replace(
-      /(<script\\b[^>]*?\\bsrc\\s*=\\s*["'])([^"']+)(["'])/gi,
-      (
-        match,
-        start,
-        url,
-        end
-      ) => {
-
-        try {
-
-          const absolute =
-            new URL(
-              url,
-              baseUrl
-            ).href;
-
-
-          return (
-            start +
-            proxyUrl(absolute) +
-            end
-          );
-
-        } catch {
-
-          return match;
-
-        }
-
-      }
-    );
-
-
-  return html;
-}
-
-
-// ============================================================
-// REWRITE CSS URLS
-// ============================================================
-
-function rewriteCss(css, baseUrl) {
-
-  return css.replace(
-    /url\\(\\s*(['"]?)([^'")]+)\\1\\s*\\)/gi,
-    (
-      match,
-      quote,
-      url
-    ) => {
-
-      const trimmed =
-        url.trim();
-
-
-      if (
-        trimmed.startsWith("data:") ||
-        trimmed.startsWith("blob:")
-      ) {
-
-        return match;
-
-      }
-
-
-      try {
-
-        const absolute =
+        const redirectTarget =
           new URL(
-            trimmed,
-            baseUrl
+            location,
+            targetURL.href
           ).href;
 
 
-        return (
-          'url("' +
-          proxyUrl(absolute) +
-          '")'
+        res.writeHead(
+          response.status,
+          {
+            "Location":
+              proxyUrl(
+                redirectTarget
+              )
+          }
         );
 
-      } catch {
-
-        return match;
-
-      }
-
-    }
-  );
-}
-
-
-// ============================================================
-// HTTP SERVER
-// ============================================================
-
-const server =
-  http.createServer(
-    async (req, res) => {
-
-      console.log(
-        "Request:",
-        req.method,
-        req.url
-      );
-
-
-      // ======================================================
-      // CORS
-      // ======================================================
-
-      res.setHeader(
-        "Access-Control-Allow-Origin",
-        "*"
-      );
-
-      res.setHeader(
-        "Access-Control-Allow-Headers",
-        "*"
-      );
-
-      res.setHeader(
-        "Access-Control-Allow-Methods",
-        "GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS"
-      );
-
-
-      // ======================================================
-      // OPTIONS
-      // ======================================================
-
-      if (
-        req.method === "OPTIONS"
-      ) {
-
-        res.writeHead(204);
         res.end();
 
         return;
-
       }
+    }
 
 
-      // ======================================================
-      // HOME
-      // ======================================================
+    // --------------------------------------------------------
+    // RESPONSE BODY
+    // --------------------------------------------------------
 
-      if (
-        req.method === "GET" &&
-        req.url === "/"
-      ) {
-
-        res.writeHead(
-          200,
-          {
-            "Content-Type":
-              "text/plain; charset=utf-8"
-          }
-        );
-
-
-        res.end(
-          "BetterProxy backend is running!"
-        );
-
-
-        return;
-
-      }
-
-
-      // ======================================================
-      // TEST PAGE
-      // ======================================================
-
-      if (
-        req.method === "GET" &&
-        req.url === "/test"
-      ) {
-
-        res.writeHead(
-          200,
-          {
-            "Content-Type":
-              "text/html; charset=utf-8"
-          }
-        );
-
-
-        res.end(
-          testPage()
-        );
-
-
-        return;
-
-      }
-
-
-      // ======================================================
-      // INTERNAL METHOD TEST
-      //
-      // IMPORTANT:
-      // This route is NOT under /proxy/.
-      // It directly receives POST/PUT/PATCH/DELETE.
-      // ======================================================
-
-      if (
-        req.url === "/method-test"
-      ) {
-
-        let body =
-          Buffer.alloc(0);
-
-
-        if (
-          req.method !== "GET" &&
-          req.method !== "HEAD"
-        ) {
-
-          body =
-            await readRequestBody(req);
-
-        }
-
-
-        const bodyText =
-          body.length > 0
-            ? body.toString("utf8")
-            : "";
-
-
-        console.log(
-          "METHOD TEST RECEIVED:",
-          req.method,
-          bodyText
-        );
-
-
-        const result = {
-          success: true,
-          method: req.method,
-          path: req.url,
-          body: bodyText
-        };
-
-
-        res.writeHead(
-          200,
-          {
-            "Content-Type":
-              "application/json; charset=utf-8"
-          }
-        );
-
-
-        res.end(
-          JSON.stringify(result)
-        );
-
-
-        return;
-
-      }
-
-
-      // ======================================================
-      // PROXY ROUTE
-      // ======================================================
-
-      if (
-        !req.url.startsWith("/proxy/")
-      ) {
-
-        res.writeHead(
-          404,
-          {
-            "Content-Type":
-              "text/plain; charset=utf-8"
-          }
-        );
-
-
-        res.end("Not found");
-
-        return;
-
-      }
-
-
-      // ======================================================
-      // DECODE TARGET
-      // ======================================================
-
-      const encoded =
-        req.url.slice("/proxy/".length);
-
-
-      const target =
-        decodeTarget(encoded);
-
-
-      if (!target) {
-
-        res.writeHead(
-          400,
-          {
-            "Content-Type":
-              "text/plain; charset=utf-8"
-          }
-        );
-
-
-        res.end(
-          "Invalid encoded URL"
-        );
-
-        return;
-
-      }
-
-
-      console.log(
-        "Decoded target:",
-        target
+    const responseBuffer =
+      Buffer.from(
+        await response.arrayBuffer()
       );
 
 
-      // ======================================================
-      // PARSE TARGET
-      // ======================================================
-
-      let targetURL;
-
-
-      try {
-
-        targetURL =
-          new URL(target);
-
-      } catch {
-
-        res.writeHead(
-          400,
-          {
-            "Content-Type":
-              "text/plain; charset=utf-8"
-          }
-        );
-
-
-        res.end(
-          "Invalid target URL"
-        );
-
-        return;
-
-      }
-
-
-      // ======================================================
-      // EXTERNAL HOST ALLOWLIST
-      // ======================================================
-
-      if (
-        !allowedHosts.includes(
-          targetURL.hostname
-        )
-      ) {
-
-        console.log(
-          "Blocked host:",
-          targetURL.hostname
-        );
-
-
-        res.writeHead(
-          403,
-          {
-            "Content-Type":
-              "text/plain; charset=utf-8"
-          }
-        );
-
-
-        res.end(
-          "This site is not enabled yet."
-        );
-
-        return;
-
-      }
-
-
-      // ======================================================
-      // READ PROXY REQUEST BODY
-      // ======================================================
-
-      let requestBody =
-        null;
-
-
-      if (
-        req.method !== "GET" &&
-        req.method !== "HEAD"
-      ) {
-
-        requestBody =
-          await readRequestBody(req);
-
-      }
-
-
-      // ======================================================
-      // FORWARD EXTERNAL REQUEST
-      // ======================================================
-
-      try {
-
-        const headers =
-          getForwardHeaders(req);
-
-
-        const options = {
-          method: req.method,
-          headers: headers,
-          redirect: "manual"
-        };
-
-
-        if (
-          requestBody &&
-          requestBody.length > 0
-        ) {
-
-          options.body =
-            requestBody;
-
-        }
-
-
-        const response =
-          await fetch(
-            targetURL.href,
-            options
-          );
-
-
-        const contentType =
-          response.headers.get(
-            "content-type"
-          ) ||
-          "application/octet-stream";
-
-
-        console.log(
-          "Response:",
-          response.status,
+    res.writeHead(
+      response.status,
+      {
+        "Content-Type":
           contentType
-        );
-
-
-        // ====================================================
-        // REDIRECT
-        // ====================================================
-
-        if (
-          response.status === 301 ||
-          response.status === 302 ||
-          response.status === 303 ||
-          response.status === 307 ||
-          response.status === 308
-        ) {
-
-          const location =
-            response.headers.get(
-              "location"
-            );
-
-
-          if (!location) {
-
-            res.writeHead(
-              response.status
-            );
-
-            res.end();
-
-            return;
-
-          }
-
-
-          const redirectTarget =
-            new URL(
-              location,
-              targetURL.href
-            ).href;
-
-
-          const redirectURL =
-            new URL(
-              redirectTarget
-            );
-
-
-          if (
-            !allowedHosts.includes(
-              redirectURL.hostname
-            )
-          ) {
-
-            res.writeHead(
-              403,
-              {
-                "Content-Type":
-                  "text/plain; charset=utf-8"
-              }
-            );
-
-
-            res.end(
-              "Redirect target is not enabled."
-            );
-
-            return;
-
-          }
-
-
-          res.writeHead(
-            response.status,
-            {
-              Location:
-                proxyUrl(
-                  redirectTarget
-                )
-            }
-          );
-
-
-          res.end();
-
-          return;
-
-        }
-
-
-        // ====================================================
-        // HTML
-        // ====================================================
-
-        if (
-          contentType.includes("text/html")
-        ) {
-
-          let body =
-            await response.text();
-
-
-          body =
-            rewriteHtml(
-              body,
-              targetURL.href
-            );
-
-
-          res.writeHead(
-            response.status,
-            {
-              "Content-Type":
-                contentType
-            }
-          );
-
-
-          res.end(body);
-
-          return;
-
-        }
-
-
-        // ====================================================
-        // CSS
-        // ====================================================
-
-        if (
-          contentType.includes("text/css") ||
-          targetURL.pathname.endsWith(".css")
-        ) {
-
-          let body =
-            await response.text();
-
-
-          body =
-            rewriteCss(
-              body,
-              targetURL.href
-            );
-
-
-          res.writeHead(
-            response.status,
-            {
-              "Content-Type":
-                contentType
-            }
-          );
-
-
-          res.end(body);
-
-          return;
-
-        }
-
-
-        // ====================================================
-        // OTHER RESOURCES
-        // ====================================================
-
-        const buffer =
-          Buffer.from(
-            await response.arrayBuffer()
-          );
-
-
-        res.writeHead(
-          response.status,
-          {
-            "Content-Type":
-              contentType
-          }
-        );
-
-
-        res.end(buffer);
-
-      } catch (error) {
-
-        console.error(
-          "Fetch error:",
-          error
-        );
-
-
-        res.writeHead(
-          502,
-          {
-            "Content-Type":
-              "text/plain; charset=utf-8"
-          }
-        );
-
-
-        res.end(
-          "Backend fetch failed: " +
-          error.message
-        );
-
       }
+    );
 
-    }
-  );
+
+    res.end(
+      responseBuffer
+    );
+
+  } catch (error) {
+
+    console.error(
+      "Proxy error:",
+      error
+    );
+
+
+    res.writeHead(502, {
+      "Content-Type":
+        "text/plain; charset=utf-8"
+    });
+
+
+    res.end(
+      "Backend fetch failed: " +
+      error.message
+    );
+
+  }
+
+});
 
 
 // ============================================================
