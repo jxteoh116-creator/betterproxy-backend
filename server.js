@@ -3,23 +3,21 @@ const http = require("http");
 const PORT = process.env.PORT || 10000;
 const BACKEND_URL = "https://betterproxy-backend.onrender.com";
 
-// ====================================
-// ALLOWED HOSTS
-// ====================================
+// ============================================================
+// HOSTS ALLOWED THROUGH THE EXTERNAL PROXY
+// ============================================================
 
 const allowedHosts = [
   "example.com",
   "www.example.com",
-  "example.org",
-  "www.example.org",
   "iana.org",
   "www.iana.org"
 ];
 
 
-// ====================================
-// URL ENCODING
-// ====================================
+// ============================================================
+// BASE64 URL ENCODING
+// ============================================================
 
 function encodeTarget(url) {
   return Buffer.from(url)
@@ -32,15 +30,15 @@ function encodeTarget(url) {
 
 function decodeTarget(encoded) {
   try {
-    let base64 = encoded
+    let value = encoded
       .replace(/-/g, "+")
       .replace(/_/g, "/");
 
-    while (base64.length % 4) {
-      base64 += "=";
+    while (value.length % 4) {
+      value += "=";
     }
 
-    return Buffer.from(base64, "base64").toString("utf8");
+    return Buffer.from(value, "base64").toString("utf8");
   } catch {
     return null;
   }
@@ -52,9 +50,9 @@ function proxyUrl(url) {
 }
 
 
-// ====================================
+// ============================================================
 // READ REQUEST BODY
-// ====================================
+// ============================================================
 
 function readRequestBody(req) {
   return new Promise((resolve, reject) => {
@@ -73,9 +71,9 @@ function readRequestBody(req) {
 }
 
 
-// ====================================
-// FORWARD HEADERS
-// ====================================
+// ============================================================
+// COPY REQUEST HEADERS
+// ============================================================
 
 function getForwardHeaders(req) {
   const headers = {};
@@ -104,9 +102,9 @@ function getForwardHeaders(req) {
 }
 
 
-// ====================================
-// REQUEST INTERCEPTOR
-// ====================================
+// ============================================================
+// CLIENT-SIDE FETCH + XHR INTERCEPTOR
+// ============================================================
 
 function requestInterceptor(baseUrl) {
   return `
@@ -120,8 +118,8 @@ function requestInterceptor(baseUrl) {
   function encodeTarget(url) {
 
     return btoa(url)
-      .replace(/\\+/g, "-")
-      .replace(/\\//g, "_")
+      .replace(/\\\\+/g, "-")
+      .replace(/\\\\//g, "_")
       .replace(/=+$/, "");
 
   }
@@ -145,194 +143,106 @@ function requestInterceptor(baseUrl) {
   }
 
 
-  // ==================================
+  // ==========================================================
   // FETCH INTERCEPTOR
-  // ==================================
+  // ==========================================================
 
-  const originalFetch =
-    window.fetch;
-
-
-  window.fetch =
-    function(input, init) {
-
-      let originalUrl;
+  const originalFetch = window.fetch;
 
 
-      if (typeof input === "string") {
+  window.fetch = function(input, init) {
 
-        originalUrl = input;
-
-      } else if (input && input.url) {
-
-        originalUrl = input.url;
-
-      } else {
-
-        return originalFetch(
-          input,
-          init
-        );
-
-      }
+    let originalUrl;
 
 
-      const absoluteUrl =
-        resolveTarget(
-          originalUrl
-        );
+    if (typeof input === "string") {
+
+      originalUrl = input;
+
+    } else if (input && input.url) {
+
+      originalUrl = input.url;
+
+    } else {
+
+      return originalFetch(input, init);
+
+    }
 
 
-      if (!absoluteUrl) {
-
-        return originalFetch(
-          input,
-          init
-        );
-
-      }
+    const absoluteUrl =
+      resolveTarget(originalUrl);
 
 
-      // IMPORTANT:
-      // Do NOT proxy requests that are
-      // already going to our backend.
+    if (!absoluteUrl) {
 
-      if (
-        absoluteUrl.startsWith(BACKEND)
-      ) {
+      return originalFetch(input, init);
 
-        return originalFetch(
-          input,
-          init
-        );
-
-      }
+    }
 
 
-      if (
-        absoluteUrl.startsWith("http://") ||
-        absoluteUrl.startsWith("https://")
-      ) {
+    // Never intercept our own backend.
 
-        const proxied =
-          BACKEND +
-          "/proxy/" +
-          encodeTarget(
-            absoluteUrl
-          );
+    if (
+      absoluteUrl === BACKEND ||
+      absoluteUrl.startsWith(BACKEND + "/")
+    ) {
 
+      return originalFetch(input, init);
 
-        console.log(
-          "BetterProxy fetch:",
-          originalUrl,
-          "=>",
-          absoluteUrl
-        );
+    }
 
 
-        return originalFetch(
-          proxied,
-          init
-        );
+    if (
+      absoluteUrl.startsWith("http://") ||
+      absoluteUrl.startsWith("https://")
+    ) {
 
-      }
+      const proxied =
+        BACKEND +
+        "/proxy/" +
+        encodeTarget(absoluteUrl);
 
 
-      return originalFetch(
-        input,
-        init
+      console.log(
+        "BetterProxy fetch:",
+        originalUrl,
+        "=>",
+        absoluteUrl
       );
 
-    };
+
+      return originalFetch(proxied, init);
+
+    }
 
 
-  // ==================================
+    return originalFetch(input, init);
+
+  };
+
+
+  // ==========================================================
   // XHR INTERCEPTOR
-  // ==================================
+  // ==========================================================
 
   const originalOpen =
     XMLHttpRequest.prototype.open;
 
 
-  XMLHttpRequest.prototype.open =
-    function(
-      method,
-      url,
-      async,
-      user,
-      password
-    ) {
+  XMLHttpRequest.prototype.open = function(
+    method,
+    url,
+    async,
+    user,
+    password
+  ) {
 
-      const absoluteUrl =
-        resolveTarget(url);
-
-
-      if (!absoluteUrl) {
-
-        return originalOpen.call(
-          this,
-          method,
-          url,
-          async,
-          user,
-          password
-        );
-
-      }
+    const absoluteUrl =
+      resolveTarget(url);
 
 
-      // IMPORTANT:
-      // Do NOT proxy requests that are
-      // already going to our backend.
-
-      if (
-        absoluteUrl.startsWith(BACKEND)
-      ) {
-
-        return originalOpen.call(
-          this,
-          method,
-          url,
-          async,
-          user,
-          password
-        );
-
-      }
-
-
-      if (
-        absoluteUrl.startsWith("http://") ||
-        absoluteUrl.startsWith("https://")
-      ) {
-
-        console.log(
-          "BetterProxy XHR:",
-          url,
-          "=>",
-          absoluteUrl
-        );
-
-
-        const proxied =
-          BACKEND +
-          "/proxy/" +
-          encodeTarget(
-            absoluteUrl
-          );
-
-
-        return originalOpen.call(
-          this,
-          method,
-          proxied,
-          async,
-          user,
-          password
-        );
-
-      }
-
+    if (!absoluteUrl) {
 
       return originalOpen.call(
         this,
@@ -343,7 +253,69 @@ function requestInterceptor(baseUrl) {
         password
       );
 
-    };
+    }
+
+
+    // Never intercept our own backend.
+
+    if (
+      absoluteUrl === BACKEND ||
+      absoluteUrl.startsWith(BACKEND + "/")
+    ) {
+
+      return originalOpen.call(
+        this,
+        method,
+        url,
+        async,
+        user,
+        password
+      );
+
+    }
+
+
+    if (
+      absoluteUrl.startsWith("http://") ||
+      absoluteUrl.startsWith("https://")
+    ) {
+
+      console.log(
+        "BetterProxy XHR:",
+        url,
+        "=>",
+        absoluteUrl
+      );
+
+
+      const proxied =
+        BACKEND +
+        "/proxy/" +
+        encodeTarget(absoluteUrl);
+
+
+      return originalOpen.call(
+        this,
+        method,
+        proxied,
+        async,
+        user,
+        password
+      );
+
+    }
+
+
+    return originalOpen.call(
+      this,
+      method,
+      url,
+      async,
+      user,
+      password
+    );
+
+  };
 
 
   console.log(
@@ -355,362 +327,332 @@ function requestInterceptor(baseUrl) {
 `;
 }
 
-// ====================================
-// CONTROLLED METHOD TEST PAGE
-// ====================================
+
+// ============================================================
+// INTERNAL METHOD TEST PAGE
+// ============================================================
 
 function testPage() {
 
-  const simulatedOrigin =
-    "https://example.com/";
-
-
   return `<!DOCTYPE html>
+
 <html>
 
 <head>
 
-  <meta charset="UTF-8">
+<meta charset="UTF-8">
 
-  <base href="https://example.com/">
+<title>BetterProxy Method Test</title>
 
-  <title>
-    BetterProxy Method Test
-  </title>
+<style>
 
-  <style>
+body {
+  font-family: sans-serif;
+  padding: 30px;
+  line-height: 1.5;
+}
 
-    body {
-      font-family: sans-serif;
-      padding: 30px;
-      line-height: 1.5;
-    }
+button {
+  padding: 10px 16px;
+  margin: 5px;
+  cursor: pointer;
+}
 
-    button {
-      padding: 10px 16px;
-      margin: 5px;
-      cursor: pointer;
-    }
+#message {
+  margin-top: 20px;
+  padding: 15px;
+  border: 1px solid #ccc;
+  white-space: pre-wrap;
+}
 
-    #message {
-      margin-top: 20px;
-      padding: 15px;
-      white-space: pre-wrap;
-      border: 1px solid #ccc;
-    }
+.success {
+  color: green;
+}
 
-  </style>
+.failure {
+  color: red;
+}
+
+</style>
 
 </head>
 
 
 <body>
 
-  <h1>
-    BetterProxy Method Test
-  </h1>
+<h1>BetterProxy Method Test</h1>
+
+<p>
+This page tests the backend's internal method endpoint.
+The tests do NOT contact example.com or another external service.
+</p>
 
 
-  <p>
-    This test sends POST, PUT, PATCH and DELETE
-    through BetterProxy to the local method-test
-    endpoint.
-  </p>
+<button id="postButton">
+Test POST
+</button>
+
+<button id="putButton">
+Test PUT
+</button>
+
+<button id="patchButton">
+Test PATCH
+</button>
+
+<button id="deleteButton">
+Test DELETE
+</button>
+
+<button id="allButton">
+Test All
+</button>
 
 
-  <button id="postButton">
-    Test POST
-  </button>
+<div id="message">
+Ready.
+</div>
 
 
-  <button id="putButton">
-    Test PUT
-  </button>
+${requestInterceptor("https://example.com/")}
 
 
-  <button id="patchButton">
-    Test PATCH
-  </button>
+<script>
+
+const message =
+  document.getElementById("message");
 
 
-  <button id="deleteButton">
-    Test DELETE
-  </button>
+// ==========================================================
+// RUN ONE INTERNAL TEST
+// ==========================================================
 
+async function testMethod(method) {
 
-  <button id="allButton">
-    Test All
-  </button>
+  try {
 
-
-  <div id="message">
-    Ready.
-  </div>
-
-
-  ${requestInterceptor(simulatedOrigin)}
-
-
-  <script>
-
-    const message =
-      document.getElementById(
-        "message"
-      );
-
-
-    // ==================================
-    // ENCODE TARGET
-    // ==================================
-
-    function encodeTarget(url) {
-
-      return btoa(url)
-        .replace(/\\+/g, "-")
-        .replace(/\\//g, "_")
-        .replace(/=+$/, "");
-
-    }
-
-
-    // ==================================
-    // TEST METHOD
-    // ==================================
-
-    async function testMethod(method) {
-
-      try {
-
-        const target =
-          "https://example.com/method-test";
-
-
-        const proxied =
-          ${JSON.stringify(BACKEND_URL)} +
-          "/proxy/" +
-          encodeTarget(target);
-
-
-        const options = {
-          method: method,
-          headers: {
-            "Content-Type":
-              "application/json"
-          }
-        };
-
-
-        if (method !== "DELETE") {
-
-          options.body =
-            JSON.stringify({
-              test: "BetterProxy",
-              method: method,
-              message: "Hello from BetterProxy"
-            });
-
-        }
-
-
-        const response =
-          await fetch(
-            proxied,
-            options
-          );
-
-
-        const text =
-          await response.text();
-
-
-        if (!response.ok) {
-
-          return (
-            method +
-            " → FAILED: HTTP " +
-            response.status +
-            "\\n" +
-            text
-          );
-
-        }
-
-
-        let data;
-
-        try {
-
-          data =
-            JSON.parse(text);
-
-        } catch {
-
-          return (
-            method +
-            " → SUCCESS\\n" +
-            text
-          );
-
-        }
-
-
-        return (
-          method +
-          " → SUCCESS\\n" +
-          "Backend received method: " +
-          data.method +
-          "\\n" +
-          "Backend received path: " +
-          data.path +
-          "\\n" +
-          "Backend received body: " +
-          (
-            data.body ||
-            "(none)"
-          )
-        );
-
-
-      } catch (error) {
-
-        return (
-          method +
-          " → FAILED\\n" +
-          error.message
-        );
-
+    const options = {
+      method: method,
+      headers: {
+        "Content-Type": "application/json"
       }
+    };
+
+
+    // POST / PUT / PATCH get a body.
+
+    if (
+      method === "POST" ||
+      method === "PUT" ||
+      method === "PATCH"
+    ) {
+
+      options.body =
+        JSON.stringify({
+          test: "BetterProxy",
+          method: method,
+          message: "Internal method test"
+        });
 
     }
 
 
-    // ==================================
-    // BUTTONS
-    // ==================================
+    // IMPORTANT:
+    // This is a DIRECT backend request.
+    //
+    // It does NOT use /proxy/.
+    //
+    // Therefore it cannot accidentally become:
+    // example.com/method-test
 
-    document
-      .getElementById("postButton")
-      .addEventListener(
-        "click",
-        async function() {
-
-          message.textContent =
-            "Testing POST...";
-
-
-          message.textContent =
-            await testMethod(
-              "POST"
-            );
-
-        }
+    const response =
+      await fetch(
+        "/method-test",
+        options
       );
 
 
-    document
-      .getElementById("putButton")
-      .addEventListener(
-        "click",
-        async function() {
-
-          message.textContent =
-            "Testing PUT...";
+    const text =
+      await response.text();
 
 
-          message.textContent =
-            await testMethod(
-              "PUT"
-            );
+    if (!response.ok) {
 
-        }
+      return (
+        method +
+        " → FAILED: HTTP " +
+        response.status +
+        "\\n" +
+        text
+      );
+
+    }
+
+
+    let data;
+
+    try {
+
+      data =
+        JSON.parse(text);
+
+    } catch {
+
+      return (
+        method +
+        " → SUCCESS\\n" +
+        text
+      );
+
+    }
+
+
+    return (
+      method +
+      " → SUCCESS\\n" +
+      "Server received method: " +
+      data.method +
+      "\\n" +
+      "Server received path: " +
+      data.path +
+      "\\n" +
+      "Server received body: " +
+      (
+        data.body ||
+        "(none)"
+      )
+    );
+
+
+  } catch (error) {
+
+    return (
+      method +
+      " → FAILED\\n" +
+      error.message
+    );
+
+  }
+
+}
+
+
+// ==========================================================
+// INDIVIDUAL BUTTONS
+// ==========================================================
+
+document
+  .getElementById("postButton")
+  .addEventListener(
+    "click",
+    async function() {
+
+      message.textContent =
+        "Testing POST...";
+
+
+      message.textContent =
+        await testMethod("POST");
+
+    }
+  );
+
+
+document
+  .getElementById("putButton")
+  .addEventListener(
+    "click",
+    async function() {
+
+      message.textContent =
+        "Testing PUT...";
+
+
+      message.textContent =
+        await testMethod("PUT");
+
+    }
+  );
+
+
+document
+  .getElementById("patchButton")
+  .addEventListener(
+    "click",
+    async function() {
+
+      message.textContent =
+        "Testing PATCH...";
+
+
+      message.textContent =
+        await testMethod("PATCH");
+
+    }
+  );
+
+
+document
+  .getElementById("deleteButton")
+  .addEventListener(
+    "click",
+    async function() {
+
+      message.textContent =
+        "Testing DELETE...";
+
+
+      message.textContent =
+        await testMethod("DELETE");
+
+    }
+  );
+
+
+// ==========================================================
+// TEST ALL
+// ==========================================================
+
+document
+  .getElementById("allButton")
+  .addEventListener(
+    "click",
+    async function() {
+
+      message.textContent =
+        "Testing all methods...";
+
+
+      const results = [];
+
+
+      results.push(
+        await testMethod("POST")
       );
 
 
-    document
-      .getElementById("patchButton")
-      .addEventListener(
-        "click",
-        async function() {
-
-          message.textContent =
-            "Testing PATCH...";
-
-
-          message.textContent =
-            await testMethod(
-              "PATCH"
-            );
-
-        }
+      results.push(
+        await testMethod("PUT")
       );
 
 
-    document
-      .getElementById("deleteButton")
-      .addEventListener(
-        "click",
-        async function() {
-
-          message.textContent =
-            "Testing DELETE...";
-
-
-          message.textContent =
-            await testMethod(
-              "DELETE"
-            );
-
-        }
+      results.push(
+        await testMethod("PATCH")
       );
 
 
-    document
-      .getElementById("allButton")
-      .addEventListener(
-        "click",
-        async function() {
-
-          message.textContent =
-            "Testing all methods...";
-
-
-          const post =
-            await testMethod(
-              "POST"
-            );
-
-
-          const put =
-            await testMethod(
-              "PUT"
-            );
-
-
-          const patch =
-            await testMethod(
-              "PATCH"
-            );
-
-
-          const del =
-            await testMethod(
-              "DELETE"
-            );
-
-
-          message.textContent =
-            post +
-            "\\n\\n" +
-            put +
-            "\\n\\n" +
-            patch +
-            "\\n\\n" +
-            del;
-
-        }
+      results.push(
+        await testMethod("DELETE")
       );
 
-  </script>
+
+      message.textContent =
+        results.join("\\n\\n");
+
+    }
+  );
+
+</script>
 
 </body>
 
@@ -718,45 +660,36 @@ function testPage() {
 }
 
 
-// ====================================
-// HTML REWRITING
-// ====================================
+// ============================================================
+// REWRITE HTML
+// ============================================================
 
-function rewriteHtml(
-  html,
-  baseUrl
-) {
+function rewriteHtml(html, baseUrl) {
 
   const interceptor =
-    requestInterceptor(
-      baseUrl
-    );
+    requestInterceptor(baseUrl);
 
 
-  if (
-    /<head\\b[^>]*>/i.test(html)
-  ) {
+  if (/<head\\b[^>]*>/i.test(html)) {
 
     html =
       html.replace(
         /<head\\b[^>]*>/i,
         match =>
-          match +
-          interceptor
+          match + interceptor
       );
 
   } else {
 
     html =
-      interceptor +
-      html;
+      interceptor + html;
 
   }
 
 
-  // ==================================
-  // LINKS
-  // ==================================
+  // ----------------------------------------------------------
+  // A HREF
+  // ----------------------------------------------------------
 
   html =
     html.replace(
@@ -778,12 +711,8 @@ function rewriteHtml(
 
 
           if (
-            !absolute.startsWith(
-              "http://"
-            ) &&
-            !absolute.startsWith(
-              "https://"
-            )
+            !absolute.startsWith("http://") &&
+            !absolute.startsWith("https://")
           ) {
 
             return match;
@@ -793,9 +722,7 @@ function rewriteHtml(
 
           return (
             start +
-            proxyUrl(
-              absolute
-            ) +
+            proxyUrl(absolute) +
             end
           );
 
@@ -809,9 +736,9 @@ function rewriteHtml(
     );
 
 
-  // ==================================
-  // IMAGES
-  // ==================================
+  // ----------------------------------------------------------
+  // IMG SRC
+  // ----------------------------------------------------------
 
   html =
     html.replace(
@@ -834,9 +761,7 @@ function rewriteHtml(
 
           return (
             start +
-            proxyUrl(
-              absolute
-            ) +
+            proxyUrl(absolute) +
             end
           );
 
@@ -850,9 +775,9 @@ function rewriteHtml(
     );
 
 
-  // ==================================
-  // STYLESHEETS
-  // ==================================
+  // ----------------------------------------------------------
+  // LINK HREF
+  // ----------------------------------------------------------
 
   html =
     html.replace(
@@ -875,9 +800,7 @@ function rewriteHtml(
 
           return (
             start +
-            proxyUrl(
-              absolute
-            ) +
+            proxyUrl(absolute) +
             end
           );
 
@@ -891,9 +814,9 @@ function rewriteHtml(
     );
 
 
-  // ==================================
-  // SCRIPTS
-  // ==================================
+  // ----------------------------------------------------------
+  // SCRIPT SRC
+  // ----------------------------------------------------------
 
   html =
     html.replace(
@@ -916,9 +839,7 @@ function rewriteHtml(
 
           return (
             start +
-            proxyUrl(
-              absolute
-            ) +
+            proxyUrl(absolute) +
             end
           );
 
@@ -936,14 +857,11 @@ function rewriteHtml(
 }
 
 
-// ====================================
-// CSS REWRITING
-// ====================================
+// ============================================================
+// REWRITE CSS URLS
+// ============================================================
 
-function rewriteCss(
-  css,
-  baseUrl
-) {
+function rewriteCss(css, baseUrl) {
 
   return css.replace(
     /url\\(\\s*(['"]?)([^'")]+)\\1\\s*\\)/gi,
@@ -958,12 +876,8 @@ function rewriteCss(
 
 
       if (
-        trimmed.startsWith(
-          "data:"
-        ) ||
-        trimmed.startsWith(
-          "blob:"
-        )
+        trimmed.startsWith("data:") ||
+        trimmed.startsWith("blob:")
       ) {
 
         return match;
@@ -982,9 +896,7 @@ function rewriteCss(
 
         return (
           'url("' +
-          proxyUrl(
-            absolute
-          ) +
+          proxyUrl(absolute) +
           '")'
         );
 
@@ -999,16 +911,13 @@ function rewriteCss(
 }
 
 
-// ====================================
-// SERVER
-// ====================================
+// ============================================================
+// HTTP SERVER
+// ============================================================
 
 const server =
   http.createServer(
-    async (
-      req,
-      res
-    ) => {
+    async (req, res) => {
 
       console.log(
         "Request:",
@@ -1017,21 +926,19 @@ const server =
       );
 
 
-      // ==================================
+      // ======================================================
       // CORS
-      // ==================================
+      // ======================================================
 
       res.setHeader(
         "Access-Control-Allow-Origin",
         "*"
       );
 
-
       res.setHeader(
         "Access-Control-Allow-Headers",
         "*"
       );
-
 
       res.setHeader(
         "Access-Control-Allow-Methods",
@@ -1039,18 +946,15 @@ const server =
       );
 
 
-      // ==================================
+      // ======================================================
       // OPTIONS
-      // ==================================
+      // ======================================================
 
       if (
         req.method === "OPTIONS"
       ) {
 
-        res.writeHead(
-          204
-        );
-
+        res.writeHead(204);
         res.end();
 
         return;
@@ -1058,9 +962,9 @@ const server =
       }
 
 
-      // ==================================
+      // ======================================================
       // HOME
-      // ==================================
+      // ======================================================
 
       if (
         req.method === "GET" &&
@@ -1086,9 +990,9 @@ const server =
       }
 
 
-      // ==================================
+      // ======================================================
       // TEST PAGE
-      // ==================================
+      // ======================================================
 
       if (
         req.method === "GET" &&
@@ -1114,9 +1018,13 @@ const server =
       }
 
 
-      // ==================================
-      // LOCAL METHOD TEST ENDPOINT
-      // ==================================
+      // ======================================================
+      // INTERNAL METHOD TEST
+      //
+      // IMPORTANT:
+      // This route is NOT under /proxy/.
+      // It directly receives POST/PUT/PATCH/DELETE.
+      // ======================================================
 
       if (
         req.url === "/method-test"
@@ -1132,9 +1040,7 @@ const server =
         ) {
 
           body =
-            await readRequestBody(
-              req
-            );
+            await readRequestBody(req);
 
         }
 
@@ -1170,9 +1076,7 @@ const server =
 
 
         res.end(
-          JSON.stringify(
-            result
-          )
+          JSON.stringify(result)
         );
 
 
@@ -1181,14 +1085,12 @@ const server =
       }
 
 
-      // ==================================
+      // ======================================================
       // PROXY ROUTE
-      // ==================================
+      // ======================================================
 
       if (
-        !req.url.startsWith(
-          "/proxy/"
-        )
+        !req.url.startsWith("/proxy/")
       ) {
 
         res.writeHead(
@@ -1200,30 +1102,23 @@ const server =
         );
 
 
-        res.end(
-          "Not found"
-        );
-
+        res.end("Not found");
 
         return;
 
       }
 
 
-      // ==================================
+      // ======================================================
       // DECODE TARGET
-      // ==================================
+      // ======================================================
 
       const encoded =
-        req.url.slice(
-          "/proxy/".length
-        );
+        req.url.slice("/proxy/".length);
 
 
       const target =
-        decodeTarget(
-          encoded
-        );
+        decodeTarget(encoded);
 
 
       if (!target) {
@@ -1241,7 +1136,6 @@ const server =
           "Invalid encoded URL"
         );
 
-
         return;
 
       }
@@ -1253,9 +1147,9 @@ const server =
       );
 
 
-      // ==================================
+      // ======================================================
       // PARSE TARGET
-      // ==================================
+      // ======================================================
 
       let targetURL;
 
@@ -1263,9 +1157,7 @@ const server =
       try {
 
         targetURL =
-          new URL(
-            target
-          );
+          new URL(target);
 
       } catch {
 
@@ -1282,15 +1174,14 @@ const server =
           "Invalid target URL"
         );
 
-
         return;
 
       }
 
 
-      // ==================================
-      // ALLOWLIST
-      // ==================================
+      // ======================================================
+      // EXTERNAL HOST ALLOWLIST
+      // ======================================================
 
       if (
         !allowedHosts.includes(
@@ -1317,15 +1208,14 @@ const server =
           "This site is not enabled yet."
         );
 
-
         return;
 
       }
 
 
-      // ==================================
-      // READ BODY
-      // ==================================
+      // ======================================================
+      // READ PROXY REQUEST BODY
+      // ======================================================
 
       let requestBody =
         null;
@@ -1337,34 +1227,25 @@ const server =
       ) {
 
         requestBody =
-          await readRequestBody(
-            req
-          );
+          await readRequestBody(req);
 
       }
 
 
-      // ==================================
-      // FORWARD REQUEST
-      // ==================================
+      // ======================================================
+      // FORWARD EXTERNAL REQUEST
+      // ======================================================
 
       try {
 
         const headers =
-          getForwardHeaders(
-            req
-          );
+          getForwardHeaders(req);
 
 
-        const fetchOptions = {
-          method:
-            req.method,
-
-          headers:
-            headers,
-
-          redirect:
-            "manual"
+        const options = {
+          method: req.method,
+          headers: headers,
+          redirect: "manual"
         };
 
 
@@ -1373,7 +1254,7 @@ const server =
           requestBody.length > 0
         ) {
 
-          fetchOptions.body =
+          options.body =
             requestBody;
 
         }
@@ -1382,7 +1263,7 @@ const server =
         const response =
           await fetch(
             targetURL.href,
-            fetchOptions
+            options
           );
 
 
@@ -1400,9 +1281,9 @@ const server =
         );
 
 
-        // ==================================
-        // REDIRECTS
-        // ==================================
+        // ====================================================
+        // REDIRECT
+        // ====================================================
 
         if (
           response.status === 301 ||
@@ -1463,7 +1344,6 @@ const server =
               "Redirect target is not enabled."
             );
 
-
             return;
 
           }
@@ -1482,26 +1362,17 @@ const server =
 
           res.end();
 
-
-          console.log(
-            "Proxy redirect:",
-            redirectTarget
-          );
-
-
           return;
 
         }
 
 
-        // ==================================
+        // ====================================================
         // HTML
-        // ==================================
+        // ====================================================
 
         if (
-          contentType.includes(
-            "text/html"
-          )
+          contentType.includes("text/html")
         ) {
 
           let body =
@@ -1524,27 +1395,20 @@ const server =
           );
 
 
-          res.end(
-            body
-          );
-
+          res.end(body);
 
           return;
 
         }
 
 
-        // ==================================
+        // ====================================================
         // CSS
-        // ==================================
+        // ====================================================
 
         if (
-          contentType.includes(
-            "text/css"
-          ) ||
-          targetURL.pathname.endsWith(
-            ".css"
-          )
+          contentType.includes("text/css") ||
+          targetURL.pathname.endsWith(".css")
         ) {
 
           let body =
@@ -1567,19 +1431,16 @@ const server =
           );
 
 
-          res.end(
-            body
-          );
-
+          res.end(body);
 
           return;
 
         }
 
 
-        // ==================================
+        // ====================================================
         // OTHER RESOURCES
-        // ==================================
+        // ====================================================
 
         const buffer =
           Buffer.from(
@@ -1596,10 +1457,7 @@ const server =
         );
 
 
-        res.end(
-          buffer
-        );
-
+        res.end(buffer);
 
       } catch (error) {
 
@@ -1629,9 +1487,9 @@ const server =
   );
 
 
-// ====================================
-// START SERVER
-// ====================================
+// ============================================================
+// START
+// ============================================================
 
 server.listen(
   PORT,
@@ -1639,7 +1497,8 @@ server.listen(
   () => {
 
     console.log(
-      `Backend listening on port ${PORT}`
+      "BetterProxy backend listening on port " +
+      PORT
     );
 
   }
