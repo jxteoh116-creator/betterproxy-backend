@@ -78,7 +78,6 @@ async function isBlockedHost(hostname) {
     return true;
   }
 }
-];
 
 function encodeTarget(url) {
   return Buffer.from(url)
